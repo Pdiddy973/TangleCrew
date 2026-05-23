@@ -1,5 +1,7 @@
 const { SlashCommandBuilder, AttachmentBuilder, PermissionFlagsBits } = require('discord.js');
 
+const OWNER_ROLE_ID = process.env.OWNER_ROLE_ID;
+
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('getdiscids')
@@ -7,6 +9,10 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction) {
+    if (!interaction.member.roles.cache.has(OWNER_ROLE_ID)) {
+      return interaction.reply({ content: 'You need the Owner role to use this command.', ephemeral: true });
+    }
+
     await interaction.deferReply({ ephemeral: true });
 
     await interaction.guild.members.fetch();

@@ -2,6 +2,8 @@ const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discor
 const { createCanvas } = require('@napi-rs/canvas');
 const GIFEncoder = require('gif-encoder-2');
 
+const COORDINATOR_ROLE_ID = process.env.COORDINATOR_ROLE_ID;
+
 const DISCORD_GREEN  = 0x1a5c2e;
 const DISCORD_PURPLE = 0x4a235a;
 
@@ -280,6 +282,10 @@ module.exports = {
     ),
 
   async execute(interaction) {
+    if (!interaction.member.roles.cache.has(COORDINATOR_ROLE_ID)) {
+      return interaction.reply({ content: 'You need the Coordinator role to use this command.', ephemeral: true });
+    }
+
     await interaction.deferReply();
 
     const raw       = interaction.options.getString('entries');
