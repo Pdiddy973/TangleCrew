@@ -1,3 +1,5 @@
+![Tangle Crew Banner](images/TCBanner.jpg)
+
 # Tanglebot
 
 A Discord bot built for the **Tangle Crew** clan in [Old School RuneScape](https://oldschool.runescape.com/).
@@ -7,6 +9,8 @@ A Discord bot built for the **Tangle Crew** clan in [Old School RuneScape](https
 ---
 
 ## Tangle Crew
+
+![Tangle Crew Logo](images/TCLogo.jpg)
 
 | | |
 |---|---|
