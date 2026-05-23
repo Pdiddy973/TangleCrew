@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "additionalDirectories": [
+      "c:\\Users\\Pauli\\OneDrive\\Documents\\GitHub\\TangleCrew\\Tanglebot"
+    ],
+    "allow": [
+      "Bash(node -e ' *)"
+    ]
+  }
+}
