@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder, MessageFlags } = require('discord.js');
 const { createCanvas } = require('@napi-rs/canvas');
 const GIFEncoder = require('gif-encoder-2');
 
@@ -283,7 +283,7 @@ module.exports = {
 
   async execute(interaction) {
     if (!interaction.member.roles.cache.has(COORDINATOR_ROLE_ID)) {
-      return interaction.reply({ content: 'You need the Coordinator role to use this command.', ephemeral: true });
+      return interaction.reply({ content: 'You need the Coordinator role to use this command.', flags: MessageFlags.Ephemeral });
     }
 
     await interaction.deferReply();

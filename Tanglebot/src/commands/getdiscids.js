@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, AttachmentBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, AttachmentBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 
 const OWNER_ROLE_ID = process.env.OWNER_ROLE_ID;
 
@@ -10,10 +10,10 @@ module.exports = {
 
   async execute(interaction) {
     if (!interaction.member.roles.cache.has(OWNER_ROLE_ID)) {
-      return interaction.reply({ content: 'You need the Owner role to use this command.', ephemeral: true });
+      return interaction.reply({ content: 'You need the Owner role to use this command.', flags: MessageFlags.Ephemeral });
     }
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     await interaction.guild.members.fetch();
     const members = interaction.guild.members.cache.filter(m => !m.user.bot);
