@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { REST, Routes } = require('discord.js');
 
 function loadCommands(client) {
   const commandsPath = path.join(__dirname, '..', 'commands');
@@ -15,4 +16,34 @@ function loadCommands(client) {
   console.log(`Loaded ${client.commands.size} command(s).`);
 }
 
-module.exports = { loadCommands };
+async function syncCommands(client) {
+  const { CLIENT_ID, CLAN_ID, DISCORD_TOKEN } = process.env;
+  if (!CLIENT_ID || !CLAN_ID) {
+    console.warn('Skipping slash command sync: CLIENT_ID and/or CLAN_ID is not set.');
+    return;
+  }
+
+  const commands = client.commands.map(command => command.data.toJSON());
+  const rest = new REST().setToken(DISCORD_TOKEN);
+
+  try {
+    console.log(`Syncing ${commands.length} slash command(s) (this replaces any existing ones)...`);
+    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, CLAN_ID), { body: commands });
+    console.log('Slash commands synced successfully.');
+  } catch (err) {
+    if (err?.code === 50001) {
+      console.error(
+        [
+          'Discord rejected the command sync with Missing Access.',
+          'Check that:',
+          '- CLAN_ID is the Discord server ID where the bot is installed.',
+          '- CLIENT_ID belongs to the same Discord application as DISCORD_TOKEN.',
+          '- The bot was invited to that server with the applications.commands scope.',
+        ].join('\n')
+      );
+    }
+    console.error('Failed to sync slash commands:', err);
+  }
+}
+
+module.exports = { loadCommands, syncCommands };
