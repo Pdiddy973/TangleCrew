@@ -150,7 +150,6 @@ module.exports = {
 
     try {
       // ── 1. Fetch, deduplicate & sort donations ─────────────────────────────
-      console.log('[updatedonations] Fetching donations from sheet...');
       const raw = await fetchDonations();
 
       // Merge duplicate Discord IDs by summing their donations
@@ -167,9 +166,7 @@ module.exports = {
 
       // ── 2. Cache guild members so we can look them up by Discord ID ────────
       const guild = interaction.guild;
-      console.log('[updatedonations] Fetching guild members...');
       await guild.members.fetch();
-      console.log(`[updatedonations] ${guild.members.cache.size} member(s) cached.`);
 
       // ── 3. Assign / remove donation tier roles ─────────────────────────────
       let assigned = 0;
@@ -178,47 +175,25 @@ module.exports = {
 
       for (const entry of entries) {
         const member = guild.members.cache.get(entry.discordId);
-        if (!member) {
-          console.log(`[updatedonations] Member not found in server: ${entry.name ?? entry.discordId}`);
-          notFound++;
-          continue;
-        }
+        if (!member) { notFound++; continue; }
 
         // DONATION_TIERS is ordered highest → lowest.
         // Find the highest tier earned; every tier below it is also granted.
         const highestIndex = DONATION_TIERS.findIndex(t => entry.donated >= t.threshold);
-        const highestTier  = highestIndex !== -1 ? DONATION_TIERS[highestIndex].name : 'none';
-        console.log(`[updatedonations] ${member.user.tag} — ${formatGP(entry.donated)} → highest tier: ${highestTier}`);
 
         for (let i = 0; i < DONATION_TIERS.length; i++) {
           const tier   = DONATION_TIERS[i];
           const roleId = process.env[tier.roleEnv];
-          if (!roleId) {
-            console.log(`[updatedonations]   Skipping ${tier.name}: role ID not configured`);
-            continue;
-          }
+          if (!roleId) continue;
 
           const role = guild.roles.cache.get(roleId);
-          if (!role) {
-            console.log(`[updatedonations]   Skipping ${tier.name}: role ID ${roleId} not found in server`);
-            continue;
-          }
+          if (!role) continue;
 
-          // Qualifies if they reached this tier or any higher one
           const qualifies = highestIndex !== -1 && i >= highestIndex;
           const hasRole   = member.roles.cache.has(roleId);
 
-          if (qualifies && !hasRole) {
-            console.log(`[updatedonations]   +${tier.name} → ${member.user.tag}`);
-            await member.roles.add(role);
-            assigned++;
-          } else if (!qualifies && hasRole) {
-            console.log(`[updatedonations]   -${tier.name} → ${member.user.tag}`);
-            await member.roles.remove(role);
-            removed++;
-          } else {
-            console.log(`[updatedonations]   ${tier.name}: no change (qualifies=${qualifies}, hasRole=${hasRole})`);
-          }
+          if (qualifies && !hasRole) { await member.roles.add(role); assigned++; }
+          else if (!qualifies && hasRole) { await member.roles.remove(role); removed++; }
         }
       }
 
@@ -253,8 +228,6 @@ module.exports = {
       }
       if (current) chunks.push(current);
 
-      console.log(`[updatedonations] Built ${chunks.length} message chunk(s).`);
-
       // ── 5. Post or edit in donations channel ───────────────────────────────
       const channel = await guild.channels.fetch(channelId);
       const stored  = readJson('donations_message.json');
@@ -265,27 +238,23 @@ module.exports = {
         const prevId = prevIds[i];
         if (prevId) {
           try {
-            console.log(`[updatedonations] Editing message ${i + 1}/${chunks.length} (${prevId})...`);
             const existing = await channel.messages.fetch(prevId);
             await existing.edit({ content: chunks[i] });
             newIds.push(existing.id);
           } catch (err) {
-            console.log(`[updatedonations] Could not edit message ${prevId} (${err.message}), sending new...`);
+            console.error(`[updatedonations] Could not edit message ${prevId} (${err.message}), sending new...`);
             const sent = await channel.send({ content: chunks[i] });
             newIds.push(sent.id);
           }
         } else {
-          console.log(`[updatedonations] Sending new message ${i + 1}/${chunks.length}...`);
           const sent = await channel.send({ content: chunks[i] });
           newIds.push(sent.id);
-          console.log(`[updatedonations] Sent: ${sent.id}`);
         }
       }
 
       // Delete any leftover messages from a previous run that had more chunks
       for (let i = chunks.length; i < prevIds.length; i++) {
         try {
-          console.log(`[updatedonations] Deleting surplus message ${prevIds[i]}...`);
           const old = await channel.messages.fetch(prevIds[i]);
           await old.delete();
         } catch {
