@@ -23,6 +23,18 @@ function loadEvents(client) {
     }
   });
 
+  client.on(Events.MessageUpdate, async (_oldMessage, newMessage) => {
+    const channelId = process.env.ANNOUNCEMENT_CHANNEL_ID;
+    if (!channelId) return;
+    if (newMessage.channelId !== channelId) return;
+    if (newMessage.content !== '[Original Message Deleted]') return;
+    try {
+      await newMessage.delete();
+    } catch (err) {
+      console.error('Failed to delete stale announcement message:', err);
+    }
+  });
+
   client.on(Events.InteractionCreate, async (interaction) => {
     const command = interaction.client.commands.get(interaction.commandName);
     if (!command) return;
