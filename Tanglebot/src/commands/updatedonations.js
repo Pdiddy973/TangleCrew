@@ -1,6 +1,6 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const axios = require('axios');
-const ExcelJS = require('exceljs');
+const { parse } = require('csv-parse/sync');
 const { readJson, writeJson } = require('../utils/db');
 
 const TEMPLAR_ROLE_ID = process.env.TEMPLAR_ROLE_ID;
@@ -70,12 +70,10 @@ async function fetchDonations() {
   const shareUrl = process.env.DONATIONS_SHEET_URL;
   if (!shareUrl) throw new Error('DONATIONS_SHEET_URL is not set in .env');
 
-  // Normalise Google Sheets URLs — extract the sheet ID and build the export URL,
-  // so edit links, share links, and export links all work the same way.
   let downloadUrl;
   const sheetsMatch = shareUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
   if (sheetsMatch) {
-    downloadUrl = `https://docs.google.com/spreadsheets/d/${sheetsMatch[1]}/export?format=xlsx`;
+    downloadUrl = `https://docs.google.com/spreadsheets/d/${sheetsMatch[1]}/export?format=csv`;
   } else {
     downloadUrl = shareUrl.includes('?') ? `${shareUrl}&download=1` : `${shareUrl}?download=1`;
   }
@@ -83,63 +81,36 @@ async function fetchDonations() {
   console.log(`[updatedonations] Downloading from: ${downloadUrl}`);
 
   const response = await axios.get(downloadUrl, {
-    responseType: 'arraybuffer',
+    responseType: 'text',
     maxRedirects: 10,
     timeout: 15_000,
     headers: { 'User-Agent': 'Tanglebot/1.0' },
   });
 
-  const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(response.data);
+  const records = parse(response.data, { columns: true, skip_empty_lines: true });
 
-  for (const worksheet of workbook.worksheets) {
-    let headers = null;
-    const rows = [];
+  if (records.length === 0) throw new Error('No data found in the spreadsheet.');
 
-    worksheet.eachRow((row, rowNumber) => {
-      // row.values is 1-indexed — slice off the leading undefined
-      const values = row.values.slice(1).map(v => {
-        if (v && typeof v === 'object' && 'text' in v) return v.text;
-        if (v && typeof v === 'object' && 'richText' in v) return v.richText.map(r => r.text).join('');
-        return v ?? '';
-      });
+  const headers    = Object.keys(records[0]);
+  const idKey      = headers.find(k => normalise(k) === 'discordid');
+  const donatedKey = headers.find(k =>
+    ['donated', 'total', 'donations', 'gp', 'amount'].includes(normalise(k))
+  );
+  const nameKey = headers.find(k => normalise(k) === 'name');
 
-      if (rowNumber === 1) {
-        headers = values.map(v => String(v));
-      } else {
-        if (!headers) return;
-        const obj = {};
-        headers.forEach((h, i) => { obj[h] = values[i] ?? ''; });
-        rows.push(obj);
-      }
-    });
-
-    if (!headers || rows.length === 0) continue;
-
-    const idKey      = headers.find(k => normalise(k) === 'discordid');
-    const donatedKey = headers.find(k =>
-      ['donated', 'total', 'donations', 'gp', 'amount'].includes(normalise(k))
-    );
-    const nameKey = headers.find(k => normalise(k) === 'name');
-
-    if (!idKey || !donatedKey) continue;
-
-    const results = rows
-      .filter(r => r[idKey])
-      .map(r => ({
-        name:      nameKey ? String(r[nameKey]).trim() : null,
-        discordId: String(r[idKey]).trim().replace(/\D/g, ''),
-        donated:   parseDonationAmount(r[donatedKey]),
-      }))
-      .filter(r => r.discordId.length >= 17);
-
-    if (results.length > 0) return results;
-  }
-
-  throw new Error(
+  if (!idKey || !donatedKey) throw new Error(
     'Could not find donation data in the spreadsheet. ' +
     'Make sure a sheet has "DiscordID" and "Donated" column headers.'
   );
+
+  return records
+    .filter(r => r[idKey])
+    .map(r => ({
+      name:      nameKey ? String(r[nameKey]).trim() : null,
+      discordId: String(r[idKey]).trim().replace(/\D/g, ''),
+      donated:   parseDonationAmount(r[donatedKey]),
+    }))
+    .filter(r => r.discordId.length >= 17);
 }
 
 // Build one leaderboard entry line
