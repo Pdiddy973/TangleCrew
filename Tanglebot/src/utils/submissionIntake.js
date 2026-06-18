@@ -115,6 +115,26 @@ function isDropSubmission(parsed) {
   return !!parsed.taskName && !!parsed.itemDropped;
 }
 
+function isExpectedSubmissionForSession(parsed, session) {
+  if (isDropSubmission(parsed)) {
+    return session.mode === 'start';
+  }
+
+  if (!isKcSubmission(parsed)) {
+    return false;
+  }
+
+  if (session.mode === 'start') {
+    return parsed.phase === 'starting';
+  }
+
+  if (session.mode === 'end') {
+    return parsed.phase === 'ending';
+  }
+
+  return false;
+}
+
 function loadSubmissionConfig(env = process.env) {
   const missing = REQUIRED_ENV_KEYS.filter(key => !env[key]);
   if (missing.length === REQUIRED_ENV_KEYS.length) {
@@ -265,6 +285,14 @@ async function handleSubmissionMessage(message, config) {
     return;
   }
 
+  if (!isExpectedSubmissionForSession(parsed, session)) {
+    const reason = session.mode === 'end'
+      ? 'Your active `/kc end` session only accepts an ending KC submission.'
+      : 'Your active `/kc start` session accepts starting KC submissions and drop proofs only.';
+    await message.reply(buildResubmitMessage(reason));
+    return;
+  }
+
   const imageAttachments = [...message.attachments.values()]
     .filter(attachment => attachment.contentType?.startsWith('image/'));
   if (imageAttachments.length !== 1) {
@@ -300,13 +328,18 @@ async function handleSubmissionMessage(message, config) {
       message,
       parsed,
     });
-    clearActiveSession(message.author.id);
+    if (session.mode === 'end') {
+      clearActiveSession(message.author.id);
+    }
 
     console.log(`Submission forwarded: type=${isDrop ? 'drop' : 'kc'} message=${message.id} channel=${message.channelId} event=${eventId}`);
 
-    await statusReply.edit(isDrop
+    const successMessage = isDrop
       ? 'Drop proof received and sent to the site for manual review.'
-      : 'KC proof received and sent to the site for manual review.');
+      : 'KC proof received and sent to the site for manual review.';
+    await statusReply.edit(session.mode === 'end'
+      ? `${successMessage} Your KC session is now closed.`
+      : `${successMessage} Your KC session remains active until you run \`/kc end\`.`);
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown error.';
     console.error('Submission upload failed:', {
@@ -326,6 +359,8 @@ module.exports = {
   getActiveSession,
   getLastAcceptedSubmission,
   handleSubmissionMessage,
+  isDropSubmission,
+  isKcSubmission,
   loadSubmissionConfig,
   parseSubmissionBody,
   setActiveSession,

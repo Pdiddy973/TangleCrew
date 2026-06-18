@@ -106,10 +106,10 @@ Controls when the bot should accept a KC or drop proof from a specific user.
 
 | Subcommand | Description |
 |------------|-------------|
-| `start` | Opens a proof session for the user in the current mapped submission channel |
-| `end` | Closes the user's active proof session |
+| `start` | Opens a starting KC/drop proof session for the user in the current mapped submission channel |
+| `end` | Switches the user's active session into ending-KC mode for one final submission |
 
-`/kc start` must be run in a configured submission channel. Once started, only that user's next valid KC or drop proof message in the same channel will be processed. After a successful submission, the session closes automatically.
+`/kc start` must be run in a configured submission channel. Once started, only that user's messages in the same channel count as submission attempts. The session stays open across successful starting KC and drop submissions until the user runs `/kc end`. `/kc end` then waits for one valid ending KC proof from that same user and closes the session afterward.
 
 ---
 
@@ -117,7 +117,7 @@ Controls when the bot should accept a KC or drop proof from a specific user.
 
 ### KC and Drop Proof Intake
 
-When configured, Tanglebot accepts KC and drop proof posts only after a user runs `/kc start` in a mapped submission channel. The bot then processes that user's next valid proof message in the same channel and forwards it to the configured Supabase intake endpoint for manual review on the site.
+When configured, Tanglebot accepts KC and drop proof posts only after a user runs `/kc start` in a mapped submission channel. Only messages from that same user in that same channel count as submission attempts. Starting KC submissions and drop proofs can continue while the start session remains active. After the user runs `/kc end`, the bot waits for one valid ending KC proof from that same user, forwards it to the configured Supabase intake endpoint for manual review on the site, and then closes the session.
 
 Supported KC format:
 
@@ -137,7 +137,7 @@ Item Dropped: <item name>
 
 Each submission must include exactly one image attachment. For ending KC submissions, `Starting or Ending: Ending`, `Ending Kill Count: 1234`, or `Kill Count: 1234` are accepted.
 
-Users without an active `/kc start` session are ignored. Validation failures keep the session open so the user can fix the format and resubmit. The intake stays disabled unless all three intake environment variables are set, so existing slash-command functionality can run without site integration configured.
+Users without an active `/kc start` session are ignored. Validation failures keep the session open so the user can fix the format and resubmit. `/kc start` accepts starting KC submissions and drop proofs. `/kc end` accepts only an ending KC submission and then closes the session. The intake stays disabled unless all three intake environment variables are set, so existing slash-command functionality can run without site integration configured.
 
 ---
 
