@@ -3,6 +3,7 @@ const { readJson, writeJson } = require('./db');
 
 const LAST_SUBMISSION_FILE = 'last-submission.json';
 const ACTIVE_SESSION_FILE = 'active-kc-sessions.json';
+const SUBMISSION_RUNTIME_CONFIG_FILE = 'submission-runtime-config.json';
 const KC_SESSION_DURATION_MS = 30 * 60 * 1000;
 const SESSION_SWEEP_INTERVAL_MS = 60 * 1000;
 const CHANNEL_EVENT_CACHE_TTL_MS = 60 * 1000;
@@ -50,6 +51,28 @@ function buildResubmitMessage(extraReason) {
     'Please resubmit using one of these exact formats:',
     SUBMISSION_FORMAT_MESSAGE,
   ].join('\n');
+}
+
+function getSubmissionRuntimeConfig() {
+  const config = readJson(SUBMISSION_RUNTIME_CONFIG_FILE);
+  return config && typeof config === 'object' ? config : {};
+}
+
+function getConfiguredIntakeUrl(env = process.env) {
+  const runtimeConfig = getSubmissionRuntimeConfig();
+  const runtimeValue = typeof runtimeConfig.intakeUrl === 'string' ? runtimeConfig.intakeUrl.trim() : '';
+  if (runtimeValue) {
+    return runtimeValue;
+  }
+
+  return env.SUPABASE_DISCORD_KC_INTAKE_URL?.trim() ?? '';
+}
+
+function setConfiguredIntakeUrl(url) {
+  const runtimeConfig = getSubmissionRuntimeConfig();
+  runtimeConfig.intakeUrl = url;
+  writeJson(SUBMISSION_RUNTIME_CONFIG_FILE, runtimeConfig);
+  return runtimeConfig.intakeUrl;
 }
 
 function parseSubmissionBody(content) {
@@ -143,7 +166,14 @@ function isExpectedSubmissionForSession(parsed, session) {
 }
 
 function loadSubmissionConfig(env = process.env) {
-  const missing = REQUIRED_ENV_KEYS.filter(key => !env[key]);
+  const effectiveIntakeUrl = getConfiguredIntakeUrl(env);
+  const missing = REQUIRED_ENV_KEYS.filter(key => {
+    if (key === 'SUPABASE_DISCORD_KC_INTAKE_URL') {
+      return !effectiveIntakeUrl;
+    }
+
+    return !env[key];
+  });
   if (missing.length === REQUIRED_ENV_KEYS.length) {
     return { enabled: false, missing };
   }
@@ -155,7 +185,7 @@ function loadSubmissionConfig(env = process.env) {
   return {
     enabled: true,
     intakeSecret: env.DISCORD_KC_INTAKE_SECRET,
-    intakeUrl: env.SUPABASE_DISCORD_KC_INTAKE_URL,
+    intakeUrl: effectiveIntakeUrl,
     supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY,
     supabaseUrl: env.SUPABASE_URL.replace(/\/+$/, ''),
   };
@@ -489,14 +519,17 @@ module.exports = {
   KC_SESSION_DURATION_MS,
   SUBMISSION_FORMAT_MESSAGE,
   clearActiveSession,
+  getConfiguredIntakeUrl,
   resolveEventIdForChannel,
   getActiveSession,
   getLastAcceptedSubmission,
+  getSubmissionRuntimeConfig,
   handleSubmissionMessage,
   isDropSubmission,
   isKcSubmission,
   loadSubmissionConfig,
   parseSubmissionBody,
+  setConfiguredIntakeUrl,
   setActiveSession,
   startActiveSessionSweep,
 };

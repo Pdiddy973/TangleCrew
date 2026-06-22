@@ -95,8 +95,12 @@ Posts the accepted KC/drop proof formats or shows the latest accepted proof subm
 |------------|-------------|
 | `format` | Posts the KC and drop proof formats for players |
 | `last` | Shows the latest accepted KC or drop proof submission |
+| `showintakeurl` | Shows the current Discord KC intake URL the bot will use |
+| `setintakeurl` | Stores a local override for the Discord KC intake URL |
 
-Both subcommands support a `private` option to show the response only to the person running the command. By default, responses are public so staff can post the format directly in a submission channel.
+`format` and `last` support a `private` option to show the response only to the person running the command. By default, responses are public so staff can post the format directly in a submission channel.
+
+`showintakeurl` and `setintakeurl` are admin-only and reply ephemerally. `setintakeurl` writes a local override file on the bot so the intake endpoint can be changed without editing `.env` or restarting the process.
 
 ### `/kc` — Start or End Proof Intake
 
@@ -199,6 +203,8 @@ SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 SUPABASE_DISCORD_KC_INTAKE_URL=https://your-project-ref.supabase.co/functions/v1/discord-manual-kc-intake
 DISCORD_KC_INTAKE_SECRET=your_shared_intake_secret
 ```
+
+If `/submission setintakeurl` has been used, the locally stored override takes precedence over `SUPABASE_DISCORD_KC_INTAKE_URL`.
 
 ### Deploy slash commands
 
