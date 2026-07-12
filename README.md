@@ -158,6 +158,18 @@ Set `ANNOUNCEMENT_CHANNEL_ID` to the ID of the channel where cleanup should run.
 
 ---
 
+### Honeypot Channel Trap
+
+When configured, Tanglebot turns a designated channel into a trap for scam bots/compromised accounts. On startup the channel is cleared and a warning embed is posted saying that sending any message there results in a timeout and/or ban. Anyone (other than bots) who posts in that channel is immediately timed out for 1 week, their message is deleted (with all image attachments re-uploaded and attached to the report, up to Discord's 10-image-per-message limit), and a report is sent to `ADMIN_LOG_CHANNEL_ID` with a guide field explaining each button and two buttons: **Ban & Delete Messages** (bans the account and does a best-effort scan-and-delete of their recent messages across all text channels/threads) and **False Positive (Un-Timeout)** (dismisses the alert and lifts the timeout). Only members with the `OWNER_ROLE_ID` or `TEMPLAR_ROLE_ID` role can use those buttons. Once either button is clicked, both buttons are removed and the embed gains an "Action Taken" field recording which action ran, who clicked it, and when.
+
+Set `HONEYPOT_CHANNEL_ID` to the ID of the trap channel. Leave it blank to disable — the trap does nothing and `/honeypot` isn't registered.
+
+Use `/honeypot testmode true` to dry-run the trap: triggering it still posts the admin report (marked as testing mode) and the buttons still work, but no one is actually timed out, banned, or has messages deleted. Run `/honeypot testmode false` to go back to live. `/honeypot status` shows the current mode.
+
+> **Note:** The bot needs **Manage Messages** in the trap channel, **Moderate Members** to time out/un-time-out, and **Ban Members** for the ban button.
+
+---
+
 ## Setup
 
 ### Prerequisites
@@ -192,6 +204,9 @@ COORDINATOR_ROLE_ID=your_coordinator_role_id
 
 # Optional announcement cleanup
 ANNOUNCEMENT_CHANNEL_ID=your_announcement_channel_id
+
+# Optional honeypot trap
+HONEYPOT_CHANNEL_ID=your_honeypot_channel_id
 
 # Optional proof intake
 SUPABASE_URL=https://your-project-ref.supabase.co

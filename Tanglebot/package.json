@@ -8,7 +8,8 @@
     "deploy": "node src/deploy-commands.js"
   },
   "overrides": {
-    "uuid": ">=11.1.1"
+    "uuid": ">=11.1.1",
+    "undici": "^6.27.0"
   },
   "dependencies": {
     "@napi-rs/canvas": "^1.0.0",

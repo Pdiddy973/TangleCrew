@@ -1,12 +1,24 @@
 const { Events, MessageFlags } = require('discord.js');
 const { syncCommands } = require('./commandHandler');
 const { handleSubmissionMessage, loadSubmissionConfig } = require('../utils/submissionIntake');
+const {
+  handleHoneypotButtonInteraction,
+  handleHoneypotMessage,
+  loadHoneypotConfig,
+  sendHoneypotStartupMessage,
+} = require('../utils/honeypot');
 
 function loadEvents(client) {
   const submissionConfig = loadSubmissionConfig();
   client.submissionConfig = submissionConfig;
   if (submissionConfig.enabled) {
     console.log('Discord submission intake enabled.');
+  }
+
+  const honeypotConfig = loadHoneypotConfig();
+  client.honeypotConfig = honeypotConfig;
+  if (honeypotConfig.enabled) {
+    console.log('Honeypot channel trap enabled.');
   }
 
   client.once(Events.ClientReady, async (c) => {
@@ -23,6 +35,8 @@ function loadEvents(client) {
         console.error('Failed to send startup message to admin log channel:', err);
       }
     }
+
+    await sendHoneypotStartupMessage(client, honeypotConfig);
   });
 
   client.on(Events.MessageCreate, async (message) => {
@@ -30,6 +44,12 @@ function loadEvents(client) {
       await handleSubmissionMessage(message, submissionConfig);
     } catch (err) {
       console.error('Submission intake error:', err);
+    }
+
+    try {
+      await handleHoneypotMessage(message, honeypotConfig, client);
+    } catch (err) {
+      console.error('Honeypot error:', err);
     }
   });
 
@@ -46,6 +66,17 @@ function loadEvents(client) {
   });
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    if (interaction.isButton()) {
+      if (interaction.customId.startsWith('hp:')) {
+        try {
+          await handleHoneypotButtonInteraction(interaction);
+        } catch (err) {
+          console.error('Honeypot button interaction error:', err);
+        }
+      }
+      return;
+    }
+
     const command = interaction.client.commands.get(interaction.commandName);
     if (!command) return;
 
