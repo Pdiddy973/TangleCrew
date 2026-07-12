@@ -22,7 +22,7 @@ module.exports = {
         .setDescription('Show whether honeypot testing mode is currently on')
     ),
 
-  requiredEnv: ['HONEYPOT_CHANNEL_ID'],
+  requiredEnvAny: ['HONEYPOT_CHANNEL_ID', 'HONEYPOT_VOICE_CHANNEL_ID'],
 
   async execute(interaction) {
     if (!hasHoneypotAdminAccess(interaction.member)) {

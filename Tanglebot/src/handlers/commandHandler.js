@@ -18,6 +18,11 @@ function loadCommands(client) {
       }
     }
 
+    if (command.requiredEnvAny && !command.requiredEnvAny.some(k => process.env[k])) {
+      console.log(`Skipping /${command.data.name}: none of the env var(s) set: ${command.requiredEnvAny.join(', ')}`);
+      continue;
+    }
+
     client.commands.set(command.data.name, command);
   }
 

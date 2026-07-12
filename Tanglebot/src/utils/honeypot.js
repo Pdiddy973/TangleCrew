@@ -22,10 +22,14 @@ const DISCORD_YELLOW = 0xd4a017;
 const CUSTOM_ID_PREFIX = 'hp';
 
 function loadHoneypotConfig(env = process.env) {
-  const channelId = env.HONEYPOT_CHANNEL_ID?.trim();
+  const channelId = env.HONEYPOT_CHANNEL_ID?.trim() || null;
+  const voiceChannelId = env.HONEYPOT_VOICE_CHANNEL_ID?.trim() || null;
+  const trapChannelIds = [channelId, voiceChannelId].filter(Boolean);
   return {
-    enabled: !!channelId,
-    channelId: channelId || null,
+    enabled: trapChannelIds.length > 0,
+    channelId,
+    voiceChannelId,
+    trapChannelIds,
   };
 }
 
@@ -92,12 +96,14 @@ function buildWarningEmbed() {
 async function sendHoneypotStartupMessage(client, config) {
   if (!config.enabled) return;
 
-  try {
-    const channel = await client.channels.fetch(config.channelId);
-    await clearHoneypotChannel(channel);
-    await channel.send({ embeds: [buildWarningEmbed()] });
-  } catch (err) {
-    console.error('Honeypot: failed to reset honeypot channel on startup:', err);
+  for (const channelId of config.trapChannelIds) {
+    try {
+      const channel = await client.channels.fetch(channelId);
+      await clearHoneypotChannel(channel);
+      await channel.send({ embeds: [buildWarningEmbed()] });
+    } catch (err) {
+      console.error(`Honeypot: failed to reset honeypot channel ${channelId} on startup:`, err);
+    }
   }
 }
 
@@ -142,12 +148,15 @@ async function downloadImageAttachments(attachments) {
 }
 
 function buildAdminLogEmbeds({ message, testMode }) {
+  const isVoiceChannel = message.channel?.type === ChannelType.GuildVoice;
+
   const embed = new EmbedBuilder()
     .setColor(DISCORD_RED)
     .setTitle('🍯 Honeypot Triggered')
     .addFields(
       { name: 'User', value: `${message.author} (${message.author.tag})`, inline: true },
       { name: 'User ID', value: message.author.id, inline: true },
+      { name: 'Trap Channel', value: isVoiceChannel ? `🔊 Voice channel chat (${message.channel})` : `${message.channel}`, inline: true },
       { name: 'Message Content', value: truncate(message.content, 1024) || '*(no text content)*' },
     )
     .setTimestamp(message.createdAt);
@@ -198,7 +207,7 @@ function buildAdminLogComponents({ userId, testMode }) {
 async function handleHoneypotMessage(message, config, client) {
   if (!config.enabled) return;
   if (message.author.bot) return;
-  if (message.channelId !== config.channelId) return;
+  if (!config.trapChannelIds.includes(message.channelId)) return;
 
   const testMode = isTestModeEnabled();
 
@@ -262,6 +271,8 @@ async function deleteAllUserMessages(guild, userId) {
     ChannelType.PublicThread,
     ChannelType.PrivateThread,
     ChannelType.AnnouncementThread,
+    ChannelType.GuildVoice,
+    ChannelType.GuildStageVoice,
   ].includes(channel.type) && canScanChannel(channel, botMember));
 
   let deletedCount = 0;
