@@ -263,11 +263,21 @@ module.exports = {
         prevIds.map(id => channel.messages.fetch(id).catch(() => null))
       );
 
-      if (prevMessages.some(m => !m)) {
+      if (prevIds.length > 0 && prevMessages.every(m => m)) {
+        console.log(`[updatedonations] Found previous message(s) from stored ID(s): ${prevIds.join(', ')}.`);
+      } else {
+        console.log(
+          prevIds.length === 0
+            ? '[updatedonations] No stored message ID(s), scanning channel history for a previous leaderboard post...'
+            : '[updatedonations] Stored message ID(s) stale, scanning channel history for a previous leaderboard post...'
+        );
+
         const recovered = await findPreviousLeaderboardMessages(channel, interaction.client.user.id);
         if (recovered.length) {
-          console.log(`[updatedonations] Stored message IDs stale, recovered ${recovered.length} previous leaderboard message(s) from channel history.`);
+          console.log(`[updatedonations] Scan found ${recovered.length} previous leaderboard message(s): ${recovered.map(m => m.id).join(', ')}.`);
           prevMessages = recovered;
+        } else {
+          console.log('[updatedonations] Scan found no previous leaderboard message(s), will post new.');
         }
       }
 
