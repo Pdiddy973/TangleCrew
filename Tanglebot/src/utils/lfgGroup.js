@@ -85,13 +85,11 @@ function computeStartTimeCleanupDelay(timeEpoch) {
   return Math.max(timeEpoch * 1000 - Date.now(), MIN_POST_LIFETIME_MS);
 }
 
-// Fallback embed color when an activity doesn't set its own `color` (see roleMenu.js CATEGORIES).
-const DEFAULT_GROUP_COLOR = 0x006400;
-
 // Closed shows green regardless of activity color — a status signal, not branding.
 // lfgPost.js's notification embed uses the same color so they always match.
+// group.color is validated before the group is created (see lfgPost.js), so it's always set here.
 function resolveGroupColor(group) {
-  return group.status === 'closed' ? 0x2ecc71 : (group.color ?? DEFAULT_GROUP_COLOR);
+  return group.status === 'closed' ? 0x2ecc71 : group.color;
 }
 
 // ---- Group post building blocks, used by lfgPost.js ----
@@ -131,7 +129,8 @@ function buildGroupEmbed(group) {
   const capDisplay = group.sizeCap === Infinity ? 'Mass' : String(group.sizeCap);
   const memberLines = [...group.members].map((id) => `<@${id}>`).join('\n');
 
-  let title = `${emojiMarkup(group.emoji) ?? '🔍'} Looking For Group`;
+  // group.emoji is validated before the group is created (see lfgPost.js), so it's always set here.
+  let title = `${emojiMarkup(group.emoji)} Looking For Group`;
   const color = resolveGroupColor(group);
   if (group.status === 'closed') {
     title = '🔒 Looking For Group — Full';

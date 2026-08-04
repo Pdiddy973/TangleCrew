@@ -27,7 +27,7 @@ const {
   GROUP_FORMED_CLEANUP_DELAY_MS,
   computeStartTimeCleanupDelay,
 } = require('./lfgGroup');
-const { ensureRoleExists, lfgRoleName, notifyAdminLog } = require('./roleMenu');
+const { ensureRoleExists, lfgRoleName, notifyAdminLog, isValidColor, isValidEmoji } = require('./roleMenu');
 
 // The Discord Forum Channel where /lfg-post posts get created as threads.
 // Create a Forum Channel in your server, copy its ID, and set this in .env.
@@ -208,6 +208,18 @@ async function handleDescriptionModalSubmit(interaction) {
   const sizeOption = findSizeOption(activityOption, session.size);
   const timeOption = findTimeOption(session.time);
   const description = interaction.fields.getTextInputValue('description')?.trim() || null;
+
+  if (!isValidColor(activityOption.color) || !isValidEmoji(activityOption.emoji)) {
+    await notifyAdminLog(
+      interaction.client,
+      '⚠️ LFG Activity Misconfigured',
+      `**${activityOption.label}** is missing a valid color and/or emoji in roleMenu.js CATEGORIES — /lfg-post aborted for <@${interaction.user.id}>.`
+    );
+    return interaction.update({
+      content: `⚠️ **${activityOption.label}** isn't fully configured yet. Ask an admin to check its color/emoji in roleMenu.js.`,
+      components: [],
+    });
+  }
 
   const guildRole = await ensureRoleExists(interaction.guild, activityOption.label);
   if (!guildRole) {

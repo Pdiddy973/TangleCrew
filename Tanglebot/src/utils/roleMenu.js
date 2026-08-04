@@ -68,13 +68,15 @@ function slugify(label) {
 
 // ---- Category definitions ----
 // Feeds /lfg-roles (buttons) and the /lfg-post Category -> Activity accordion.
-// Missing roles are auto-created as "LFG-<label>" the first time they're needed (see ensureRoleExists below) — nothing is created up front.
+// Missing roles are auto-created as "LFG-<label>" the first time they're needed (see ensureRoleExists below)
 // Rename any pre-existing plain-named role to add the "LFG-" prefix so it's reused instead of duplicated.
 // label doubles as the exact Discord role name, so spell it the way the role should read (e.g. "Royal Titans", not "Titans").
 //
 // ---- Copy/paste template ----
 // New role:
-//   { label: 'Display Name', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(N), color: '#006400' },
+//   { label: 'Display Name', emoji: 'PUT_EMOJI_ID_HERE', color: '#006400', sizeOptions: sizeRange(N) },
+// A missing/invalid color or emoji isn't defaulted — /lfg-post will refuse to post that
+// activity and alert ADMIN_LOG_CHANNEL_ID instead (see isValidColor/isValidEmoji below).
 //
 // New category:
 //   new_key: {
@@ -90,49 +92,48 @@ const CATEGORIES = {
     label: 'Bosses',
     buttonEmoji: '1381713946591105187',
     roles: [
-      { label: 'Yama', emoji: '1381816093336801340', sizeOptions: sizeRange(2), color: '#9F0D19' },
-      { label: 'Nightmare', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { label: 'Royal Titans', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(2), color: '#006400' },
-      { label: 'Hueycoatl', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { label: 'Callisto', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { label: 'Zilyana', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { label: 'Corp', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { label: 'DKS', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(3), color: '#006400' },
-      { label: 'Graardor', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { label: 'Kril', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { label: 'Kree', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { label: 'Nex', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { label: 'Scurrius', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { label: 'Venenatis', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { label: 'Vet\'ion', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { label: 'Yama', emoji: '1381816093336801340', color: '#9F0D19', sizeOptions: sizeRange(2) },
+      { label: 'Nightmare', emoji: '1381713659486539877', color: '#006400', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Royal Titans', emoji: '1381713565261500426', color: '#006400', sizeOptions: sizeRange(2) },
+      { label: 'Hueycoatl', emoji: '1381713619120685196', color: '#006400', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'DKS', emoji: '1381713656861036716', color: '#006400', sizeOptions: sizeRange(3) },
+      { label: 'Scurrius', emoji: '1381714078996893717', color: '#006400', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Nex', emoji: '1381713664381550794', color: '#006400', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Zilyana', emoji: '1381714082234761317', color: '#006400', sizeOptions: sizeRange(5) },
+      { label: 'Corp', emoji: '1381713935560085684', color: '#006400', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Graardor', emoji: '1381713936801464331', color: '#006400', sizeOptions: sizeRange(5) },
+      { label: 'Kril', emoji: '1381713940374884544', color: '#006400', sizeOptions: sizeRange(5) },
+      { label: 'Kree', emoji: '1381713939301404762', color: '#006400', sizeOptions: sizeRange(5) },
+      { label: 'Callisto', emoji: '1381713566226186380', color: '#006400', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Venenatis', emoji: '1381728681327726593', color: '#006400', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Vet\'ion', emoji: '1381816089486430410', color: '#006400', sizeOptions: sizeRangeWithMass(5) },
     ],
   },
   raids: {
     label: 'Raids',
     buttonEmoji: '💰',
     roles: [
-      { label: 'CoX', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(7), color: '#006400' },
-      { label: 'ToA', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(8), color: '#006400' },
-      { label: 'ToB', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { label: 'CoX', emoji: '1381713947534819418', color: '#006400', sizeOptions: sizeRangeWithMass(7) },
+      { label: 'ToB', emoji: '1381713627568144425', color: '#006400', sizeOptions: sizeRange(5) },
+      { label: 'ToA', emoji: '1381728693445066862', color: '#006400', sizeOptions: sizeRange(8) },
     ],
   },
   minigames: {
     label: 'Minigames',
     buttonEmoji: '⚒️',
     roles: [
-      { label: 'Tempoross', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { label: 'Zalcano', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { label: 'Wintertodt', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { label: 'GOTR', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { label: 'Soul Wars', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { label: 'Castle Wars', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { label: 'Barb Assault', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { label: 'Tempoross', emoji: '1381728691700371599', color: '#006400', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Zalcano', emoji: '1381728687103283321', color: '#006400', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Wintertodt', emoji: '1381977814588330075', color: '#006400', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'GOTR', emoji: '1381713553475633226', color: '#006400', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Soul Wars', emoji: '1011956473615630396', color: '#006400', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Castle Wars', emoji: '1382355517363585065', color: '#006400', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Barb Assault', emoji: '1381713942979543070', color: '#006400', sizeOptions: sizeRange(5) },
     ],
   },
 };
 
-// Attach each role's derived `value` identifier and each category's derived `activityNoun`
-// now, so the rest of the codebase can keep reading them without knowing they're computed.
+// Attach each role's derived `value` identifier and each category's derived `activityNoun` now, so the rest of the codebase can keep reading them without knowing they're computed.
 for (const category of Object.values(CATEGORIES)) {
   category.activityNoun = category.label.toLowerCase();
   for (const role of category.roles) {
@@ -371,6 +372,12 @@ function isValidEmoji(emoji) {
   return isSnowflakeEmoji(emoji) || /[^\x00-\x7F]/.test(emoji);
 }
 
+// A real color is a 6-digit hex string like "#006400" — rejects placeholders, empty
+// strings, and anything left unset.
+function isValidColor(color) {
+  return typeof color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(color);
+}
+
 // Renders a role's emoji as inline markup usable in message/embed text (e.g. a title).
 // Custom emoji need Discord's <:_:ID> markup to resolve by ID; unicode emoji render as-is.
 // Returns null if there's no valid emoji, so callers can fall back to a default.
@@ -398,4 +405,6 @@ module.exports = {
   lfgRoleName,
   notifyAdminLog,
   emojiMarkup,
+  isValidEmoji,
+  isValidColor,
 };
