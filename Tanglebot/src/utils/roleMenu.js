@@ -40,7 +40,7 @@ async function notifyAdminLog(client, title, description, fields = [], color = A
     const channel = await client.channels.fetch(adminLogChannelId);
     await channel.send({ embeds: [embed] });
   } catch (err) {
-    console.error('Could not send LFG admin log notification:', err.message);
+    console.error('[LFG] Could not send admin log notification:', err.message);
   }
 }
 
@@ -324,7 +324,7 @@ async function handleClearAllRoles(interaction) {
   try {
     await member.roles.remove(lfgRoles);
   } catch (err) {
-    console.error('Clear all LFG roles error:', err);
+    console.error('[LFG] Clear all roles error:', err);
     return notifyAdminLogAndReply(
       interaction,
       '⚠️ LFG Role Clear Failed',
@@ -373,10 +373,10 @@ async function ensureRoleExists(guild, name) {
       mentionable: true,
       reason: 'Auto-created for the LFG system (roleMenu.js CATEGORIES)',
     });
-    console.log(`Created missing LFG role: "${role.name}"`);
+    console.log(`[LFG] Created missing role: "${role.name}"`);
     return role;
   } catch (err) {
-    console.error(`Could not auto-create LFG role "${lfgRoleName(name)}":`, err.message);
+    console.error(`[LFG] Could not auto-create role "${lfgRoleName(name)}":`, err.message);
     return null;
   }
 }

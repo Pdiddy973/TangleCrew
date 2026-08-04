@@ -94,7 +94,7 @@ function loadEvents(client) {
         try {
           await handleLfgPostGroupButtonInteraction(interaction);
         } catch (err) {
-          console.error('LFG post group button interaction error:', err);
+          console.error('[LFG] Post group button interaction error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong updating that group.');
         }
       }
@@ -106,14 +106,14 @@ function loadEvents(client) {
         try {
           await handleLfgPostSelectInteraction(interaction);
         } catch (err) {
-          console.error('LFG post select interaction error:', err);
+          console.error('[LFG] Post select interaction error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong updating your LFG post setup.');
         }
       } else if (interaction.customId.startsWith('lfgsuggestion:')) {
         try {
           await handleLfgSuggestionSelectInteraction(interaction);
         } catch (err) {
-          console.error('LFG suggestion select interaction error:', err);
+          console.error('[LFG] Suggestion select interaction error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong with your suggestion.');
         }
       }
@@ -125,14 +125,14 @@ function loadEvents(client) {
         try {
           await handleLfgPostModalSubmit(interaction);
         } catch (err) {
-          console.error('LFG post modal submit error:', err);
+          console.error('[LFG] Post modal submit error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong creating your LFG post.');
         }
       } else if (interaction.customId.startsWith('lfgsuggestion:')) {
         try {
           await handleLfgSuggestionModalSubmit(interaction);
         } catch (err) {
-          console.error('LFG suggestion modal submit error:', err);
+          console.error('[LFG] Suggestion modal submit error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong sending your suggestion.');
         }
       }

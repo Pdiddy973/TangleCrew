@@ -252,6 +252,8 @@ async function handleNewActivitySubmit(interaction) {
   if (flags.length) fields.push({ name: NEEDS_LOOK_FIELD_NAME, value: flags.join(', ') });
   if (reason) fields.push({ name: 'Notes', value: reason });
 
+  console.log(`[LFG] Suggestion submitted: new activity "${label}" (${categoryLabel}), by ${interaction.user.username}${flags.length ? ` [needs look: ${flags.join(', ')}]` : ''}`);
+
   await notifyAdminLog(
     interaction.client,
     '💡 LFG Suggestion: New Activity',
@@ -299,6 +301,8 @@ async function handleEditActivitySubmit(interaction) {
   ];
   if (flags.length) fields.push({ name: NEEDS_LOOK_FIELD_NAME, value: flags.join(', ') });
   if (reason) fields.push({ name: 'Notes', value: reason });
+
+  console.log(`[LFG] Suggestion submitted: edit ${categoryLabel} → ${activityOption.label} (${changes.length} change${changes.length === 1 ? '' : 's'}), by ${interaction.user.username}${flags.length ? ` [needs look: ${flags.join(', ')}]` : ''}`);
 
   await notifyAdminLog(
     interaction.client,
