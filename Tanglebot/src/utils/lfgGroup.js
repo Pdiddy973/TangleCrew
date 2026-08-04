@@ -351,11 +351,21 @@ async function handleCreatePost(interaction) {
   const embed = buildGroupEmbed(group);
   const row = buildGroupRow(groupId, 'open');
 
-  const publicMessage = await interaction.channel.send({
-    content: `<@&${guildRole.id}>`,
-    embeds: [embed],
-    components: [row],
-  });
+  let publicMessage;
+  try {
+    publicMessage = await interaction.channel.send({
+      content: `<@&${guildRole.id}>`,
+      embeds: [embed],
+      components: [row],
+    });
+  } catch (err) {
+    activeGroups.delete(groupId);
+    console.error(`Could not post LFG group ${groupId}:`, err.message);
+    return interaction.reply({
+      content: '⚠️ Something went wrong creating the LFG post. Please try again.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 
   group.channelId = publicMessage.channelId;
   group.messageId = publicMessage.id;
@@ -369,11 +379,23 @@ async function handleCreatePost(interaction) {
   setTimeout(() => interaction.deleteReply().catch(() => {}), 5000);
 }
 
-async function handleJoinButton(interaction, groupId) {
+function mentionAll(group) {
+  return [...group.members].map((id) => `<@${id}>`).join(' ');
+}
+
+// Looks up the group for a button interaction, replying "no longer exists" and returning null if it's gone.
+async function requireGroup(interaction, groupId) {
   const group = activeGroups.get(groupId);
   if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
+    return null;
   }
+  return group;
+}
+
+async function handleJoinButton(interaction, groupId) {
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (group.status === 'closed') {
     return interaction.reply({ content: '⚠️ This group is already full.', flags: MessageFlags.Ephemeral });
   }
@@ -394,23 +416,19 @@ async function handleJoinButton(interaction, groupId) {
   await interaction.followUp({ content: '✅ You joined the group!', flags: MessageFlags.Ephemeral });
 
   if (justFilled) {
-    const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
     const formedMessage = await interaction.channel.send({
-      content: `${mentions}\n🎉 **Group formed, Good luck!**`,
+      content: `${mentionAll(group)}\n🎉 **Group formed, Good luck!**`,
     });
     group.formedMessageId = formedMessage.id;
     scheduleGroupCleanup(interaction.client, group, GROUP_FORMED_CLEANUP_DELAY_MS);
   } else {
-    const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
-    await interaction.channel.send({ content: `${mentions}\n🔔 <@${interaction.user.id}> joined the group!` });
+    await interaction.channel.send({ content: `${mentionAll(group)}\n🔔 <@${interaction.user.id}> joined the group!` });
   }
 }
 
 async function handleLeaveButton(interaction, groupId) {
-  const group = activeGroups.get(groupId);
-  if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
-  }
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (!group.members.has(interaction.user.id)) {
     return interaction.reply({ content: 'You\'re not in this group.', flags: MessageFlags.Ephemeral });
   }
@@ -422,16 +440,13 @@ async function handleLeaveButton(interaction, groupId) {
   await interaction.followUp({ content: 'You left the group.', flags: MessageFlags.Ephemeral });
 
   if (group.members.size > 0) {
-    const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
-    await interaction.channel.send({ content: `${mentions}\n⚠️ <@${interaction.user.id}> left the group.` });
+    await interaction.channel.send({ content: `${mentionAll(group)}\n⚠️ <@${interaction.user.id}> left the group.` });
   }
 }
 
 async function handleCloseButton(interaction, groupId) {
-  const group = activeGroups.get(groupId);
-  if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
-  }
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (group.status !== 'open') {
     return interaction.reply({ content: '⚠️ This group is already closed.', flags: MessageFlags.Ephemeral });
   }
@@ -441,9 +456,8 @@ async function handleCloseButton(interaction, groupId) {
   const row = buildGroupRow(groupId, 'closed');
   await interaction.update({ embeds: [embed], components: [row] });
 
-  const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
   const formedMessage = await interaction.channel.send({
-    content: `${mentions}\n🎉 **Group formed, Good luck!**`,
+    content: `${mentionAll(group)}\n🎉 **Group formed, Good luck!**`,
   });
   group.formedMessageId = formedMessage.id;
 
@@ -451,10 +465,8 @@ async function handleCloseButton(interaction, groupId) {
 }
 
 async function handleReopenButton(interaction, groupId) {
-  const group = activeGroups.get(groupId);
-  if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
-  }
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (group.status !== 'closed') {
     return interaction.reply({ content: '⚠️ This group isn\'t currently closed.', flags: MessageFlags.Ephemeral });
   }
@@ -464,18 +476,15 @@ async function handleReopenButton(interaction, groupId) {
   const row = buildGroupRow(groupId, 'open');
   await interaction.update({ embeds: [embed], components: [row] });
 
-  const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
-  await interaction.channel.send({ content: `${mentions}\n🔓 **This group has been reopened and is accepting new members again!**` });
+  await interaction.channel.send({ content: `${mentionAll(group)}\n🔓 **This group has been reopened and is accepting new members again!**` });
 
   // Back to the original expiry rule now that it's open again.
   scheduleGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
 }
 
 async function handleDisbandButton(interaction, groupId) {
-  const group = activeGroups.get(groupId);
-  if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
-  }
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (group.status === 'disbanded') {
     return interaction.reply({ content: '⚠️ This group is already disbanded.', flags: MessageFlags.Ephemeral });
   }

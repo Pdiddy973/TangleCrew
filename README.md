@@ -100,7 +100,7 @@ Lets members self-assign notification roles for specific bosses, raids, and skil
 3. Clicking an activity toggles that role on or off — selected roles turn red and stay red until clicked again.
 4. Once a member has a role, anyone can `@mention` it to notify everyone who's opted in.
 
-**Setup:** requires all activity roles to exist in the server with matching names (the full list lives in `src/utils/roleMenu.js`), the bot's role positioned above them, and — optionally — custom pet emojis uploaded and their IDs added for a nicer-looking menu.
+**Setup:** the bot auto-creates any missing activity role (prefixed `LFG-`, e.g. `LFG-Yama`; full list in `src/utils/roleMenu.js`) the first time it's needed — no manual role setup required. Needs the **Manage Roles** permission, with the bot's own role positioned above the `LFG-` roles once created. Optionally, upload custom pet emojis and add their IDs for a nicer-looking menu.
 
 ---
 
@@ -119,7 +119,7 @@ Creates a post in a configured Forum Channel so members can find and join a grou
 4. Anyone can **Join** or **Leave** from the post. Anyone can also **Close** it early (locks joining, pings the group) or **Disband** it (cancels immediately). A closed/full group can be **Reopened** if someone drops out.
 5. The post deletes itself automatically once its start time passes (15-minute minimum lifetime) or 5 minutes after the group closes/fills.
 
-**Setup:** requires `LFG_FORUM_CHANNEL_ID` set to a Forum Channel, the same activity roles as `/lfg-pings`, and the bot's role with **Manage Threads** (needed to rename/delete forum posts) in addition to the other permissions below.
+**Setup:** requires `LFG_FORUM_CHANNEL_ID` set to a Forum Channel, the same auto-created activity roles as `/lfg-pings`, and the bot's role with **Manage Threads** (needed to rename/delete forum posts) in addition to the other permissions below.
 
 ---
 

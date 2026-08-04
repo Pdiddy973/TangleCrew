@@ -31,6 +31,19 @@ const { ensureRoleExists, lfgRoleName } = require('./roleMenu');
 // Create a Forum Channel in your server, copy its ID, and set this in .env.
 const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
 
+// Reports a failure to ADMIN_LOG_CHANNEL_ID, if configured. Silently skipped if unset.
+async function notifyAdminLog(client, content) {
+  const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
+  if (!adminLogChannelId) return;
+
+  try {
+    const channel = await client.channels.fetch(adminLogChannelId);
+    await channel.send({ content });
+  } catch (err) {
+    console.error('Could not send LFG forum failure to admin log:', err.message);
+  }
+}
+
 // Separate in-memory state from the regular /lfg command, so both versions can run side by side without interfering with each other.
 // Lost on restart/redeploy, same caveat as the regular version.
 const setupSessions = new Map(); // userId -> { category, activity, size, time }
@@ -272,6 +285,10 @@ async function handleDescriptionModalSubmit(interaction) {
   } catch (err) {
     activeGroups.delete(groupId);
     console.error(`Could not create LFG forum post for group ${groupId}:`, err.message);
+    await notifyAdminLog(
+      interaction.client,
+      `⚠️ Failed to create an LFG forum post for <@${interaction.user.id}> (${roleLabel}): ${err.message}`
+    );
     return interaction.reply({
       content: '⚠️ Something went wrong creating the forum post. Please try again.',
       flags: MessageFlags.Ephemeral,
