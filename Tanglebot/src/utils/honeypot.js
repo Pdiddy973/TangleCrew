@@ -131,8 +131,7 @@ function findImageAttachments(message) {
 async function downloadImageAttachment(attachment, index) {
   try {
     const response = await axios.get(attachment.url, { responseType: 'arraybuffer', timeout: 10000 });
-    // Deterministic, ASCII-safe name - avoids attachment://-reference mismatches from special
-    // characters or duplicate original filenames (e.g. multiple screenshots both named "image.png").
+    // Deterministic, ASCII-safe name - avoids attachment://-reference mismatches from special characters or duplicate original filenames (e.g. multiple screenshots both named "image.png").
     const ext = IMAGE_EXTENSIONS_BY_CONTENT_TYPE[attachment.contentType] || 'png';
     const name = `honeypot-image-${index}.${ext}`;
     return new AttachmentBuilder(Buffer.from(response.data), { name });
@@ -176,9 +175,7 @@ function buildAdminLogEmbeds({ message, testMode }) {
     });
   }
 
-  // Images are sent as plain attachments (see handleHoneypotMessage), not referenced from the
-  // embed - Discord natively grids multiple image attachments together, and this avoids the
-  // embed `attachment://` + shared-url gallery trick misbehaving on the post-button-click edit.
+  // Images are sent as plain attachments (see handleHoneypotMessage), not referenced from the embed - Discord natively grids multiple image attachments together, and this avoids the embed `attachment://` + shared-url gallery trick misbehaving on the post-button-click edit.
   return [embed];
 }
 

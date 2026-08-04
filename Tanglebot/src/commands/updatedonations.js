@@ -130,9 +130,7 @@ function buildLine(entry) {
 
 const LEADERBOARD_HEADER = `# ${COINS_EMOJI} Donation High Scores ${COINS_EMOJI}`;
 
-// Appends a header + list of lines to a summary, truncating the list (rather
-// than the whole reply) so we stay under Discord's 2000-char message limit
-// even when a large batch of members changed in one run.
+// Appends a header + list of lines to a summary, truncating the list (rather than the whole reply) so we stay under Discord's 2000-char message limit even when a large batch of members changed in one run.
 function appendTruncatedList(base, header, lines) {
   if (!lines.length) return base;
 
@@ -151,18 +149,15 @@ function appendTruncatedList(base, header, lines) {
   return base + header + body;
 }
 
-// Fallback for when the stored message ID(s) are stale (message deleted,
-// data file reset by a redeploy, etc). Scans recent channel history for the
-// bot's own previous leaderboard post(s) so we can still edit in place
-// instead of spamming a brand-new message every time.
+// Fallback for when the stored message ID(s) are stale (message deleted, data file reset by a redeploy, etc).
+// Scans recent channel history for the bot's own previous leaderboard post(s) so we can still edit in place instead of spamming a brand-new message every time.
 async function findPreviousLeaderboardMessages(channel, botUserId) {
   const fetched = await channel.messages.fetch({ limit: 50 });
   const ownMessages = [...fetched.values()]
     .filter(m => m.author.id === botUserId)
     .sort((a, b) => a.createdTimestamp - b.createdTimestamp);
 
-  // Only trust the recovery if the earliest message actually looks like our
-  // leaderboard header — otherwise we could hijack an unrelated bot message.
+  // Only trust the recovery if the earliest message actually looks like our leaderboard header — otherwise we could hijack an unrelated bot message.
   if (!ownMessages.length || !ownMessages[0].content.startsWith(LEADERBOARD_HEADER)) return [];
   return ownMessages;
 }
@@ -212,8 +207,7 @@ module.exports = {
       console.log(`[updatedonations] ${raw.length} rows → ${entries.length} unique donor(s) after dedup.`);
 
       // ── 1b. Diff against totals from the last run to see who donated since ─
-      // Skip on the very first run (no prior totals) so we don't report every
-      // existing donor's full total as a fresh "addition".
+      // Skip on the very first run (no prior totals) so we don't report every existing donor's full total as a fresh "addition".
       const prevTotals = readJson('donations_totals.json');
       const hasPrevTotals = Object.keys(prevTotals).length > 0;
       const contributions = hasPrevTotals
@@ -256,8 +250,7 @@ module.exports = {
           if (qualifies && !hasRole) {
             await member.roles.add(role);
             assigned++;
-            // Tiers are iterated highest → lowest, so the first newly-added
-            // role for this member is the highest new tier they reached.
+            // Tiers are iterated highest → lowest, so the first newly-added role for this member is the highest new tier they reached.
             if (!newTier) newTier = tier;
           } else if (!qualifies && hasRole) {
             await member.roles.remove(role);
