@@ -56,74 +56,92 @@ function sizeRangeWithMass(max) {
   return options;
 }
 
+// Derives a role's stable identifier (used in customIds and select-menu values) from its
+// display label, e.g. "Royal Titans" -> "royal_titans", "Vet'ion" -> "vetion".
+function slugify(label) {
+  return label
+    .toLowerCase()
+    .replace(/'/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
 // ---- Category definitions ----
 // Feeds /lfg-roles (buttons) and the /lfg-post Category -> Activity accordion.
-// Missing roles are auto-created as "LFG-<roleName>" the first time they're actually needed (see ROLE_PREFIX above and ensureRoleExists below) — nothing is created up front.
+// Missing roles are auto-created as "LFG-<label>" the first time they're needed (see ensureRoleExists below) — nothing is created up front.
 // Rename any pre-existing plain-named role to add the "LFG-" prefix so it's reused instead of duplicated.
+// label doubles as the exact Discord role name, so spell it the way the role should read (e.g. "Royal Titans", not "Titans").
 //
 // ---- Copy/paste template ----
 // New role:
-//   { value: 'unique_key', label: 'Display Name', roleName: 'Exact Name', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(N), color: '#006400' },
+//   { label: 'Display Name', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(N), color: '#006400' },
 //
 // New category:
 //   new_key: {
+//     // label is lowercased into the picker prompt's noun (e.g. "Pick the bosses...") —
+//     // spell it as a plural noun, not a gerund (e.g. "Bosses", not "Bossing").
 //     label: 'Label',
 //     buttonEmoji: '🔥',
 //     buttonStyle: ButtonStyle.Primary, // optional, defaults to Primary
-//     activityNoun: 'activities', // plural noun used in the picker prompt, e.g. "Pick the <activityNoun> you want..."
 //     roles: [ /* role entries above */ ],
 //   },
 const CATEGORIES = {
   bossing: {
-    label: 'Bossing',
+    label: 'Bosses',
     buttonEmoji: '1381713946591105187',
-    activityNoun: 'bosses',
     roles: [
-      { value: 'yama', label: 'Yama', roleName: 'Yama', emoji: '1381816093336801340', sizeOptions: sizeRange(2), color: '#9F0D19' },
-      { value: 'nightmare', label: 'Nightmare', roleName: 'Nightmare', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { value: 'royal_titans', label: 'Titans', roleName: 'Royal Titans', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(2), color: '#006400' },
-      { value: 'hueycoatl', label: 'Huey', roleName: 'Hueycoatl', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'callisto', label: 'Callisto', roleName: 'Callisto', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'zilyana', label: 'Zilyana', roleName: 'Zilyana', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'corp', label: 'Corp', roleName: 'Corp', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
-      { value: 'dks', label: 'DKS', roleName: 'DKS', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(3), color: '#006400' },
-      { value: 'graardor', label: 'Graardor', roleName: 'Graardor', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'kril', label: 'Kril', roleName: 'Kril', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'kree', label: 'Kree', roleName: 'Kree', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'nex', label: 'Nex', roleName: 'Nex', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { value: 'scurrius', label: 'Scurrius', roleName: 'Scurrius', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'venenatis', label: 'Venenatis', roleName: 'Venenatis', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'vetion', label: 'Vet\'ion', roleName: 'Vet\'ion', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { label: 'Yama', emoji: '1381816093336801340', sizeOptions: sizeRange(2), color: '#9F0D19' },
+      { label: 'Nightmare', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { label: 'Royal Titans', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(2), color: '#006400' },
+      { label: 'Hueycoatl', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { label: 'Callisto', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { label: 'Zilyana', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { label: 'Corp', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { label: 'DKS', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(3), color: '#006400' },
+      { label: 'Graardor', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { label: 'Kril', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { label: 'Kree', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { label: 'Nex', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { label: 'Scurrius', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { label: 'Venenatis', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { label: 'Vet\'ion', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
     ],
   },
   raids: {
     label: 'Raids',
     buttonEmoji: '💰',
-    activityNoun: 'raids',
     roles: [
-      { value: 'cox', label: 'CoX', roleName: 'CoX', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(7), color: '#006400' },
-      { value: 'toa', label: 'ToA', roleName: 'ToA', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(8), color: '#006400' },
-      { value: 'tob', label: 'ToB', roleName: 'ToB', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { label: 'CoX', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(7), color: '#006400' },
+      { label: 'ToA', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(8), color: '#006400' },
+      { label: 'ToB', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
     ],
   },
   minigames: {
     label: 'Minigames',
     buttonEmoji: '⚒️',
-    activityNoun: 'minigames',
     roles: [
-      { value: 'tempoross', label: 'Tempoross', roleName: 'Tempoross', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { value: 'zalcano', label: 'Zalcano', roleName: 'Zalcano', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { value: 'wintertodt', label: 'Wintertodt', roleName: 'Wintertodt', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { value: 'gotr', label: 'GOTR', roleName: 'GOTR', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { value: 'soul_wars', label: 'Soul Wars', roleName: 'Soul Wars', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { value: 'castle_wars', label: 'Castle Wars', roleName: 'Castle Wars', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { value: 'barb_assault', label: 'Barb Assault', roleName: 'Barb Assault', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { label: 'Tempoross', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { label: 'Zalcano', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { label: 'Wintertodt', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { label: 'GOTR', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { label: 'Soul Wars', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { label: 'Castle Wars', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { label: 'Barb Assault', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
     ],
   },
 };
 
+// Attach each role's derived `value` identifier and each category's derived `activityNoun`
+// now, so the rest of the codebase can keep reading them without knowing they're computed.
+for (const category of Object.values(CATEGORIES)) {
+  category.activityNoun = category.label.toLowerCase();
+  for (const role of category.roles) {
+    role.value = slugify(role.label);
+  }
+}
+
 // customId scheme used for all buttons here:
-//   "roles:category:<categoryKey>"          — top-level category button (Bossing, Raids, etc.)
+//   "roles:category:<categoryKey>"          — top-level category button (Bosses, Raids, etc.)
 //   "roles:toggle:<categoryKey>:<roleValue>" — a specific boss/raid toggle
 //   "roles:clearall"                         — removes every LFG- role the member has
 // eventHandler.js routes any button whose customId starts with "roles:" here.
@@ -183,7 +201,7 @@ function buildCategoryButtonRows(categoryKey, member) {
   const category = CATEGORIES[categoryKey];
 
   const buttons = category.roles.map((r) => {
-    const has = memberHasRoleName(member, r.roleName);
+    const has = memberHasRoleName(member, r.label);
     const btn = new ButtonBuilder()
       .setCustomId(`roles:toggle:${categoryKey}:${r.value}`)
       .setLabel(r.label)
@@ -223,16 +241,16 @@ async function handleRoleToggle(interaction, categoryKey, value) {
 
   const guild = interaction.guild;
   const member = interaction.member;
-  const role = await ensureRoleExists(guild, roleConfig.roleName);
+  const role = await ensureRoleExists(guild, roleConfig.label);
 
   if (!role) {
     await notifyAdminLog(
       interaction.client,
       '⚠️ LFG Role Creation Failed',
-      `Couldn't find or create **${lfgRoleName(roleConfig.roleName)}** for <@${interaction.user.id}> via /lfg-roles. Check the bot's **Manage Roles** permission.`
+      `Couldn't find or create **${lfgRoleName(roleConfig.label)}** for <@${interaction.user.id}> via /lfg-roles. Check the bot's **Manage Roles** permission.`
     );
     return interaction.reply({
-      content: `⚠️ I couldn't find or create the role **${lfgRoleName(roleConfig.roleName)}**. Make sure I have the **Manage Roles** permission.`,
+      content: `⚠️ I couldn't find or create the role **${lfgRoleName(roleConfig.label)}**. Make sure I have the **Manage Roles** permission.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -248,7 +266,7 @@ async function handleRoleToggle(interaction, categoryKey, value) {
     await notifyAdminLog(
       interaction.client,
       '⚠️ LFG Role Assignment Failed',
-      `Couldn't add/remove **${lfgRoleName(roleConfig.roleName)}** for <@${interaction.user.id}> via /lfg-roles: ${err.message}. Make sure the bot's role sits above it.`
+      `Couldn't add/remove **${lfgRoleName(roleConfig.label)}** for <@${interaction.user.id}> via /lfg-roles: ${err.message}. Make sure the bot's role sits above it.`
     );
     return interaction.reply({
       content: '⚠️ I couldn\'t update your roles. Make sure my role sits above these roles.',

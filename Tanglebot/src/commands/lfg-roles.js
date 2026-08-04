@@ -4,7 +4,7 @@ const { buildMenuEmbed, buildCategoryButtonsRow, buildClearAllRow, MENU_MESSAGE_
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('lfg-roles')
-    .setDescription('Get your private LFG Roles menu (Bossing / Raids)'),
+    .setDescription('Get your private LFG Roles menu (Bosses / Raids)'),
 
   async execute(interaction) {
     const embed = buildMenuEmbed();

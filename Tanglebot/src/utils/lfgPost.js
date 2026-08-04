@@ -209,15 +209,15 @@ async function handleDescriptionModalSubmit(interaction) {
   const timeOption = findTimeOption(session.time);
   const description = interaction.fields.getTextInputValue('description')?.trim() || null;
 
-  const guildRole = await ensureRoleExists(interaction.guild, activityOption.roleName);
+  const guildRole = await ensureRoleExists(interaction.guild, activityOption.label);
   if (!guildRole) {
     await notifyAdminLog(
       interaction.client,
       '⚠️ LFG Role Creation Failed',
-      `Couldn't find or create **${lfgRoleName(activityOption.roleName)}** for <@${interaction.user.id}> via /lfg-post. Check the bot's **Manage Roles** permission.`
+      `Couldn't find or create **${lfgRoleName(activityOption.label)}** for <@${interaction.user.id}> via /lfg-post. Check the bot's **Manage Roles** permission.`
     );
     return interaction.update({
-      content: `⚠️ I couldn't find or create the role **${lfgRoleName(activityOption.roleName)}**. Make sure I have the **Manage Roles** permission.`,
+      content: `⚠️ I couldn't find or create the role **${lfgRoleName(activityOption.label)}**. Make sure I have the **Manage Roles** permission.`,
       components: [],
     });
   }
@@ -266,7 +266,7 @@ async function handleDescriptionModalSubmit(interaction) {
   // Auto-apply a matching forum tag if one exists with the same name as the activity (e.g. "Yama" — the base name, not the "LFG-" prefixed role).
   // Entirely optional — skipped if none matches.
   const matchingTag = forumChannel.availableTags?.find(
-    (t) => t.name.toLowerCase() === activityOption.roleName.toLowerCase()
+    (t) => t.name.toLowerCase() === activityOption.label.toLowerCase()
   );
 
   // The description only shows in the embed (see buildGroupEmbed) — the message content is just the role ping.
