@@ -62,7 +62,7 @@ const ACTIVITY_MESSAGE_LIFETIME_MS = 60 * 1000;
 
 // How long someone offered a freed spot has to Accept/Decline before it auto-skips to the next
 // person in the queue.
-const QUEUE_OFFER_TIMEOUT_MS = 1 * 60 * 1000;
+const QUEUE_OFFER_TIMEOUT_MS = 5 * 60 * 1000;
 
 // Grace period between clicking Disband and the post actually closing, so a mis-click (or a
 // change of heart) can still be caught via Cancel Disband.
