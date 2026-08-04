@@ -90,7 +90,7 @@ function slugify(label) {
 const CATEGORIES = {
   bossing: {
     label: 'Bosses',
-    buttonEmoji: '1381713946591105187',
+    buttonEmoji: '1534226181463871528',
     roles: [
       { label: 'Yama', emoji: '1381816093336801340', color: '#8B0000', sizeOptions: sizeRange(2) },
       { label: 'Nightmare', emoji: '1381713659486539877', color: '#6B2470', sizeOptions: sizeRangeWithMass(5) },
@@ -111,7 +111,7 @@ const CATEGORIES = {
   },
   raids: {
     label: 'Raids',
-    buttonEmoji: '💰',
+    buttonEmoji: '1534226179312189520',
     roles: [
       { label: 'CoX', emoji: '1381713947534819418', color: '#17A398', sizeOptions: sizeRangeWithMass(7) },
       { label: 'ToB', emoji: '1381713627568144425', color: '#7A0C0C', sizeOptions: sizeRange(5) },
@@ -120,7 +120,7 @@ const CATEGORIES = {
   },
   minigames: {
     label: 'Minigames',
-    buttonEmoji: '⚒️',
+    buttonEmoji: '1534226176573313104',
     roles: [
       { label: 'Tempoross', emoji: '1381728691700371599', color: '#1B6CA8', sizeOptions: sizeRangeWithMass(10) },
       { label: 'Zalcano', emoji: '1381728687103283321', color: '#5A6B57', sizeOptions: sizeRangeWithMass(10) },
