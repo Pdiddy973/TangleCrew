@@ -36,6 +36,16 @@ async function notifyAdminLog(client, title, description) {
   }
 }
 
+// Builds the default 2..max size-options list (the same range lfgGroup.js's buildSizeOptions
+// would generate on its own), for activities with no "Mass" option.
+function sizeRange(max) {
+  const options = [];
+  for (let n = 2; n <= max; n++) {
+    options.push({ value: String(n), label: n === max ? `${n} Players (Max)` : `${n} Players` });
+  }
+  return options;
+}
+
 // Builds a size-options list of 2..max players, plus an appended "Mass" option (for "N/mass" activities).
 function sizeRangeWithMass(max) {
   const options = [];
@@ -51,31 +61,15 @@ function sizeRangeWithMass(max) {
 // Missing roles are auto-created as "LFG-<roleName>" the first time they're actually needed (see ROLE_PREFIX above and ensureRoleExists below) — nothing is created up front.
 // Rename any pre-existing plain-named role to add the "LFG-" prefix so it's reused instead of duplicated.
 //
-// ---- Copy/paste templates ----
-// value, label, roleName, maxPlayers are required on every role entry below.
-// emoji, sizeOptions, and color are all optional and independent — add any combination of them to any entry.
-//
-// Basic role:
-//   { value: 'unique_key', label: 'Display Name', roleName: 'Exact Name', maxPlayers: N },
-//
-// + a "Mass" size option:
-//   sizeOptions: sizeRangeWithMass(N),
-//
-// + an emoji — either a custom emoji's ID (no name needed) or a plain unicode emoji:
-//   emoji: 'PUT_EMOJI_ID_HERE',
-//   emoji: '🔥',
-//
-// + a custom /lfg-post embed color — accepts a '#RRGGBB' hex string or a 0xRRGGBB number, whichever's easier.
-// Omit to use the default (see DEFAULT_GROUP_COLOR in lfgGroup.js):
-//   color: '#3498db',
-//
-// All combined on one entry:
-//   { value: 'unique_key', label: 'Display Name', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'Exact Name', maxPlayers: N, sizeOptions: sizeRangeWithMass(N), color: '#3498db' },
+// ---- Copy/paste template ----
+// New role:
+//   { value: 'unique_key', label: 'Display Name', roleName: 'Exact Name', maxPlayers: N, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(N), color: '#006400' },
 //
 // New category:
 //   new_key: {
 //     key: 'new_key',
 //     buttonLabel: 'Label',
+//     dropdownLabel: 'Shorter Label',
 //     buttonEmoji: '🔥',
 //     buttonStyle: ButtonStyle.Primary,
 //     prompt: 'Pick the activities you want to be pingable for. Selected ones turn red and stay red until you click them again.',
@@ -85,37 +79,39 @@ const CATEGORIES = {
   bossing: {
     key: 'bossing',
     buttonLabel: 'Bossing',
+    dropdownLabel: 'Boss',
     buttonEmoji: '1381713946591105187',
     buttonStyle: ButtonStyle.Primary,
     prompt: 'Pick the bosses you want to be pingable for. Selected ones turn red and stay red until you click them again.',
     roles: [
-      { value: 'yama', label: 'Yama', emoji: '1381816093336801340', roleName: 'Yama', maxPlayers: 2, color: '#9F0D19' },
-      { value: 'nightmare', label: 'Nightmare', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'Nightmare', maxPlayers: 5, sizeOptions: sizeRangeWithMass(5) },
-      { value: 'royal_titans', label: 'Titans', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'Royal Titans', maxPlayers: 2 },
-      { value: 'hueycoatl', label: 'Huey', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'Hueycoatl', maxPlayers: 5 },
-      { value: 'callisto', label: 'Callisto', roleName: 'Callisto', maxPlayers: 5 },
-      { value: 'zilyana', label: 'Zilyana', roleName: 'Zilyana', maxPlayers: 5 },
-      { value: 'corp', label: 'Corp', roleName: 'Corp', maxPlayers: 10 },
-      { value: 'dks', label: 'DKS', roleName: 'DKS', maxPlayers: 3 },
-      { value: 'graardor', label: 'Graardor', roleName: 'Graardor', maxPlayers: 5 },
-      { value: 'kril', label: 'Kril', roleName: 'Kril', maxPlayers: 5 },
-      { value: 'kree', label: 'Kree', roleName: 'Kree', maxPlayers: 5 },
-      { value: 'nex', label: 'Nex', roleName: 'Nex', maxPlayers: 5, sizeOptions: sizeRangeWithMass(5) },
-      { value: 'scurrius', label: 'Scurrius', roleName: 'Scurrius', maxPlayers: 5 },
-      { value: 'venenatis', label: 'Venenatis', roleName: 'Venenatis', maxPlayers: 5 },
-      { value: 'vetion', label: 'Vet\'ion', roleName: 'Vet\'ion', maxPlayers: 5 },
+      { value: 'yama', label: 'Yama', roleName: 'Yama', maxPlayers: 2, emoji: '1381816093336801340', sizeOptions: sizeRange(2), color: '#9F0D19' },
+      { value: 'nightmare', label: 'Nightmare', roleName: 'Nightmare', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { value: 'royal_titans', label: 'Titans', roleName: 'Royal Titans', maxPlayers: 2, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(2), color: '#006400' },
+      { value: 'hueycoatl', label: 'Huey', roleName: 'Hueycoatl', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'callisto', label: 'Callisto', roleName: 'Callisto', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'zilyana', label: 'Zilyana', roleName: 'Zilyana', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'corp', label: 'Corp', roleName: 'Corp', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'dks', label: 'DKS', roleName: 'DKS', maxPlayers: 3, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(3), color: '#006400' },
+      { value: 'graardor', label: 'Graardor', roleName: 'Graardor', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'kril', label: 'Kril', roleName: 'Kril', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'kree', label: 'Kree', roleName: 'Kree', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'nex', label: 'Nex', roleName: 'Nex', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { value: 'scurrius', label: 'Scurrius', roleName: 'Scurrius', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'venenatis', label: 'Venenatis', roleName: 'Venenatis', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'vetion', label: 'Vet\'ion', roleName: 'Vet\'ion', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
     ],
   },
   raids: {
     key: 'raids',
     buttonLabel: 'Raids',
+    dropdownLabel: 'Raid',
     buttonEmoji: '💰',
     buttonStyle: ButtonStyle.Primary,
     prompt: 'Pick the raids you want to be pingable for. Selected ones turn red and stay red until you click them again.',
     roles: [
-      { value: 'cox', label: 'CoX', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'CoX', maxPlayers: 7, sizeOptions: sizeRangeWithMass(7) },
-      { value: 'toa', label: 'ToA', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'ToA', maxPlayers: 8 },
-      { value: 'tob', label: 'ToB', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'ToB', maxPlayers: 5 },
+      { value: 'cox', label: 'CoX', roleName: 'CoX', maxPlayers: 7, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(7), color: '#006400' },
+      { value: 'toa', label: 'ToA', roleName: 'ToA', maxPlayers: 8, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(8), color: '#006400' },
+      { value: 'tob', label: 'ToB', roleName: 'ToB', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
     ],
   },
   minigames: {
@@ -125,28 +121,39 @@ const CATEGORIES = {
     buttonStyle: ButtonStyle.Primary,
     prompt: 'Pick the minigames you want to be pingable for. Selected ones turn red and stay red until you click them again.',
     roles: [
-      { value: 'tempoross', label: 'Tempoross', roleName: 'Tempoross', maxPlayers: 10 },
-      { value: 'zalcano', label: 'Zalcano', roleName: 'Zalcano', maxPlayers: 10 },
-      { value: 'wintertodt', label: 'Wintertodt', roleName: 'Wintertodt', maxPlayers: 10 },
-      { value: 'gotr', label: 'GOTR', roleName: 'GOTR', maxPlayers: 10 },
-      { value: 'soul_wars', label: 'Soul Wars', roleName: 'Soul Wars', maxPlayers: 10, sizeOptions: sizeRangeWithMass(10) },
-      { value: 'castle_wars', label: 'Castle Wars', roleName: 'Castle Wars', maxPlayers: 10, sizeOptions: sizeRangeWithMass(10) },
-      { value: 'barb_assault', label: 'Barb Assault', roleName: 'Barb Assault', maxPlayers: 5 },
+      { value: 'tempoross', label: 'Tempoross', roleName: 'Tempoross', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'zalcano', label: 'Zalcano', roleName: 'Zalcano', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'wintertodt', label: 'Wintertodt', roleName: 'Wintertodt', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'gotr', label: 'GOTR', roleName: 'GOTR', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'soul_wars', label: 'Soul Wars', roleName: 'Soul Wars', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { value: 'castle_wars', label: 'Castle Wars', roleName: 'Castle Wars', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { value: 'barb_assault', label: 'Barb Assault', roleName: 'Barb Assault', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
     ],
   },
 };
 
 // customId scheme used for all buttons here:
-//   "roles:category:<categoryKey>"          — top-level Bossing/Raids button
+//   "roles:category:<categoryKey>"          — top-level category button (Bossing, Raids, etc.)
 //   "roles:toggle:<categoryKey>:<roleValue>" — a specific boss/raid toggle
 //   "roles:clearall"                         — removes every LFG- role the member has
 // eventHandler.js routes any button whose customId starts with "roles:" here.
 
+// Joins display labels into "A", "A or B", or "A, B, or C" — used to list categories in prose.
+function joinWithOr(items) {
+  if (items.length <= 2) return items.join(' or ');
+  return `${items.slice(0, -1).join(', ')}, or ${items[items.length - 1]}`;
+}
+
 function buildMenuEmbed() {
+  const categoryLabels = Object.values(CATEGORIES).map((cat) => {
+    const emoji = emojiMarkup(cat.buttonEmoji);
+    return `**${emoji ? `${emoji} ` : ''}${cat.buttonLabel}**`;
+  });
+
   return new EmbedBuilder()
     .setTitle('LFG Roles')
     .setDescription(
-      'Click **Bossing** or **💰 Raids** to pick specific bosses/raids. ' +
+      `Click ${joinWithOr(categoryLabels)} to pick specific activities you want to be pingable for. ` +
       'Selected ones turn red.\n\n' +
       'Once you have a role, anyone can `@mention` it to notify everyone ' +
       'signed up when that event is happening.\n\n' +

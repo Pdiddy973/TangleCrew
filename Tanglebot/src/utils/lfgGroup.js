@@ -6,16 +6,11 @@ const {
 } = require('discord.js');
 const { CATEGORIES, emojiMarkup } = require('./roleMenu');
 
-// Top-level accordion categories shown in the first /lfg-post dropdown.
-// Derived from roleMenu.js's CATEGORIES so a new category added there is never missed here — no second place to update.
-// A couple of entries use shorter dropdown text than their /lfg-roles button label (CATEGORY_LABEL_OVERRIDES); everything else falls back to buttonLabel.
-const CATEGORY_LABEL_OVERRIDES = {
-  raids: 'Raid',
-  bossing: 'Boss',
-};
+// Top-level accordion categories for the /lfg-post dropdown, derived from roleMenu.js's CATEGORIES.
+// dropdownLabel overrides buttonLabel for shorter dropdown text; omit it to reuse buttonLabel.
 const CATEGORY_OPTIONS = Object.values(CATEGORIES).map((c) => ({
   key: c.key,
-  label: CATEGORY_LABEL_OVERRIDES[c.key] ?? c.buttonLabel,
+  label: c.dropdownLabel ?? c.buttonLabel,
 }));
 
 function findCategoryOption(key) {
@@ -30,24 +25,18 @@ function findActivityOption(categoryKey, value) {
   return getActivityOptions(categoryKey).find((r) => r.value === value);
 }
 
-// Group size options. Most activities get an auto-generated 2..max range.
-// An activity can override this entirely with its own `sizeOptions` array (see `sizeRangeWithMass` in roleMenu.js for the common "N players + Mass" case).
+// Every activity's sizeOptions is set in roleMenu.js (see sizeRange/sizeRangeWithMass there) —
+// this just reads it back, keeping that range formula in one place.
 function buildSizeOptions(activityOption) {
-  if (activityOption.sizeOptions) return activityOption.sizeOptions;
-  const options = [];
-  for (let n = 2; n <= activityOption.maxPlayers; n++) {
-    options.push({ value: String(n), label: n === activityOption.maxPlayers ? `${n} Players (Max)` : `${n} Players` });
-  }
-  return options;
+  return activityOption.sizeOptions;
 }
 
 function findSizeOption(activityOption, value) {
   return buildSizeOptions(activityOption).find((o) => o.value === value);
 }
 
-// Short descriptor shown next to an activity in the picker, e.g. "max 5" or "2-5, Mass" for activities with a custom sizeOptions override.
+// Short descriptor shown next to an activity in the picker, e.g. "2-5" or "2-5, Mass".
 function describeSizeOptions(activityOption) {
-  if (!activityOption.sizeOptions) return `max ${activityOption.maxPlayers}`;
   const numeric = activityOption.sizeOptions.filter((o) => /^\d+$/.test(o.value)).map((o) => o.value);
   const special = activityOption.sizeOptions.filter((o) => !/^\d+$/.test(o.value)).map((o) => o.label);
   const rangeText = numeric.length ? (numeric.length > 1 ? `${numeric[0]}-${numeric[numeric.length - 1]}` : numeric[0]) : '';
@@ -59,9 +48,10 @@ function parseSizeCap(value) {
   return /^\d+$/.test(value) ? parseInt(value, 10) : Infinity;
 }
 
-// Time is chosen as an offset from right now (in minutes) rather than an absolute clock time.
-// This sidesteps timezone ambiguity entirely — "1 Hour from now" means the same thing to everyone regardless of where they are.
-// The actual epoch is resolved fresh at post-creation time (see resolveTimeEpoch), and the posted embed uses Discord's <t:...> timestamp format, which auto-localizes to each viewer's own timezone and clock format.
+// An offset from now (in minutes), not an absolute clock time — sidesteps timezone ambiguity
+// entirely, since "1 Hour from now" means the same thing to everyone. The epoch is resolved
+// fresh at post-creation time (resolveTimeEpoch), and Discord's <t:...> format auto-localizes
+// the posted embed to each viewer's own timezone and clock format.
 const TIME_OFFSET_OPTIONS = [
   { value: '0', label: 'Now' },
   { value: '15', label: '15 Min' },
@@ -79,7 +69,8 @@ function findTimeOption(value) {
   return TIME_OFFSET_OPTIONS.find((o) => o.value === value);
 }
 
-// Resolved fresh at the moment the group is actually created, not whenever the dropdown was originally rendered — so a slow-to-decide creator still gets an accurate "X minutes/hours from now".
+// Resolved at creation time (not when the dropdown was rendered), so a slow-to-decide creator
+// still gets an accurate "X from now".
 function resolveTimeEpoch(offsetMinutesValue) {
   return Math.floor(Date.now() / 1000) + parseInt(offsetMinutesValue, 10) * 60;
 }
@@ -87,25 +78,27 @@ function resolveTimeEpoch(offsetMinutesValue) {
 // How long a full group's post stays up before auto-deleting.
 const GROUP_FORMED_CLEANUP_DELAY_MS = 5 * 60 * 1000;
 
-// Every post gets at least this long before the "start time has passed" auto-delete can fire — otherwise picking "Now" (or 15 Min) would delete the post almost immediately, before anyone has a chance to see or join it.
+// Minimum lifetime before the "start time passed" auto-delete can fire — otherwise picking
+// "Now" (or 15 Min) would delete the post almost immediately, before anyone can join.
 const MIN_POST_LIFETIME_MS = 15 * 60 * 1000;
 
 function computeStartTimeCleanupDelay(timeEpoch) {
   return Math.max(timeEpoch * 1000 - Date.now(), MIN_POST_LIFETIME_MS);
 }
 
-// Embed color for an open group when its activity doesn't set its own `color` (see roleMenu.js CATEGORIES).
+// Fallback embed color when an activity doesn't set its own `color` (see roleMenu.js CATEGORIES).
 const DEFAULT_GROUP_COLOR = 0x006400;
 
-// Closed (full) always shows as green regardless of the activity's color — a status signal, not branding.
-// Used by both the group embed and the activity notification embed (see lfgPost.js) so they always match.
+// Closed shows green regardless of activity color — a status signal, not branding.
+// lfgPost.js's notification embed uses the same color so they always match.
 function resolveGroupColor(group) {
   return group.status === 'closed' ? 0x2ecc71 : (group.color ?? DEFAULT_GROUP_COLOR);
 }
 
 // ---- Group post building blocks, used by lfgPost.js ----
 // status: 'open' | 'closed' (auto-closed once full) | 'disbanded'
-// Anyone can Join/Leave. Disband is limited to current group members or Coordinator/Owner staff (see canDisbandGroup in lfgPost.js).
+// Anyone can Join/Leave. Disband is limited to group members or Coordinator/Owner staff
+// (see canDisbandGroup in lfgPost.js).
 // Closed groups reopen automatically the moment someone leaves and frees up a spot.
 function buildGroupRow(groupId, status, prefix) {
   if (status === 'open') {
