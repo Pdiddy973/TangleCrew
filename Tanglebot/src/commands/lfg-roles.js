@@ -1,5 +1,11 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { buildMenuEmbed, buildCategoryButtonsRow, buildClearAllRow, MENU_MESSAGE_LIFETIME_MS } = require('../utils/roleMenu');
+const {
+  buildMenuEmbed,
+  buildCategoryButtonsRow,
+  buildClearAllRow,
+  MENU_MESSAGE_LIFETIME_MS,
+  scheduleReplyCleanup,
+} = require('../utils/roleMenu');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -14,10 +20,6 @@ module.exports = {
     await interaction.reply({ embeds: [embed], components: [row, clearRow], flags: MessageFlags.Ephemeral });
 
     // Auto-delete this menu after 60 seconds. Roles already picked stay assigned.
-    setTimeout(() => {
-      interaction.deleteReply().catch((err) => {
-        console.error('Could not delete /lfg-roles menu message:', err.message);
-      });
-    }, MENU_MESSAGE_LIFETIME_MS);
+    scheduleReplyCleanup(interaction, MENU_MESSAGE_LIFETIME_MS, '/lfg-roles menu message');
   },
 };

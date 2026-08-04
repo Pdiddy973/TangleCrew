@@ -36,8 +36,25 @@ async function notifyAdminLog(client, title, description) {
   }
 }
 
-// Builds the default 2..max size-options list (the same range lfgGroup.js's buildSizeOptions
-// would generate on its own), for activities with no "Mass" option.
+// Reports an issue to admin log, then replies to the user with an ephemeral, ⚠️-prefixed message.
+// Shared by every /lfg-roles failure path (role creation, role assignment, clearing roles) so the
+// pairing only needs to change in one place.
+async function notifyAdminLogAndReply(interaction, title, adminMessage, userMessage) {
+  await notifyAdminLog(interaction.client, title, adminMessage);
+  return interaction.reply({ content: userMessage, flags: MessageFlags.Ephemeral });
+}
+
+// Deletes interaction's reply after delayMs, logging (rather than throwing) if it's already gone
+// — e.g. the user dismissed it, or it was already cleaned up some other way.
+function scheduleReplyCleanup(interaction, delayMs, logLabel) {
+  setTimeout(() => {
+    interaction.deleteReply().catch((err) => {
+      console.error(`Could not delete ${logLabel}:`, err.message);
+    });
+  }, delayMs);
+}
+
+// Builds the default 2..max size-options list, for activities with no "Mass" option.
 function sizeRange(max) {
   const options = [];
   for (let n = 2; n <= max; n++) {
@@ -68,7 +85,7 @@ function slugify(label) {
 
 // ---- Category definitions ----
 // Feeds /lfg-roles (buttons) and the /lfg-post Category -> Activity accordion.
-// Missing roles are auto-created as "LFG-<label>" the first time they're needed (see ensureRoleExists below)
+// Missing roles are auto-created as "LFG-<label>" the first time they're needed (see ensureRoleExists below).
 // Rename any pre-existing plain-named role to add the "LFG-" prefix so it's reused instead of duplicated.
 // label doubles as the exact Discord role name, so spell it the way the role should read (e.g. "Royal Titans", not "Titans").
 //
@@ -170,12 +187,12 @@ function buildMenuEmbed() {
       `Click ${joinWithOr(categoryLabels)} to pick specific activities you want to be pingable for. ` +
       'Selected ones turn red.\n\n' +
       'Once you have a role, anyone can `@mention` it to notify everyone ' +
-      'signed up when that event is happening.\n\n' +
+      'signed up when that activity is happening.\n\n' +
       'Click **Clear All LFG Roles** to remove every LFG role you have in one go.\n\n' +
       '_This message will delete itself in 60 seconds — your roles stay either way._'
     )
     .setColor(0xc2a24c)
-    .setFooter({ text: 'Old School RuneScape Event Notifications' });
+    .setFooter({ text: 'OSRS Activity Notifications' });
 }
 
 function buildCategoryButtonsRow() {
@@ -226,11 +243,7 @@ async function sendCategoryMenu(interaction, categoryKey, isUpdate) {
   }
 
   // Auto-delete this submenu after 60 seconds. Roles already picked stay assigned.
-  setTimeout(() => {
-    interaction.deleteReply().catch((err) => {
-      console.error('Could not delete role submenu message:', err.message);
-    });
-  }, MENU_MESSAGE_LIFETIME_MS);
+  scheduleReplyCleanup(interaction, MENU_MESSAGE_LIFETIME_MS, 'role submenu message');
 }
 
 async function handleRoleToggle(interaction, categoryKey, value) {
@@ -245,15 +258,12 @@ async function handleRoleToggle(interaction, categoryKey, value) {
   const role = await ensureRoleExists(guild, roleConfig.label);
 
   if (!role) {
-    await notifyAdminLog(
-      interaction.client,
+    return notifyAdminLogAndReply(
+      interaction,
       '⚠️ LFG Role Creation Failed',
-      `Couldn't find or create **${lfgRoleName(roleConfig.label)}** for <@${interaction.user.id}> via /lfg-roles. Check the bot's **Manage Roles** permission.`
+      `Couldn't find or create **${lfgRoleName(roleConfig.label)}** for <@${interaction.user.id}> via /lfg-roles. Check the bot's **Manage Roles** permission.`,
+      `⚠️ I couldn't find or create the role **${lfgRoleName(roleConfig.label)}**. Make sure I have the **Manage Roles** permission.`
     );
-    return interaction.reply({
-      content: `⚠️ I couldn't find or create the role **${lfgRoleName(roleConfig.label)}**. Make sure I have the **Manage Roles** permission.`,
-      flags: MessageFlags.Ephemeral,
-    });
   }
 
   try {
@@ -264,15 +274,12 @@ async function handleRoleToggle(interaction, categoryKey, value) {
     }
   } catch (err) {
     console.error('Role toggle error:', err);
-    await notifyAdminLog(
-      interaction.client,
+    return notifyAdminLogAndReply(
+      interaction,
       '⚠️ LFG Role Assignment Failed',
-      `Couldn't add/remove **${lfgRoleName(roleConfig.label)}** for <@${interaction.user.id}> via /lfg-roles: ${err.message}. Make sure the bot's role sits above it.`
+      `Couldn't add/remove **${lfgRoleName(roleConfig.label)}** for <@${interaction.user.id}> via /lfg-roles: ${err.message}. Make sure the bot's role sits above it.`,
+      '⚠️ I couldn\'t update your roles. Make sure my role sits above these roles.'
     );
-    return interaction.reply({
-      content: '⚠️ I couldn\'t update your roles. Make sure my role sits above these roles.',
-      flags: MessageFlags.Ephemeral,
-    });
   }
 
   // Re-render the same ephemeral menu with the button now toggled red/grey
@@ -291,15 +298,12 @@ async function handleClearAllRoles(interaction) {
     await member.roles.remove(lfgRoles);
   } catch (err) {
     console.error('Clear all LFG roles error:', err);
-    await notifyAdminLog(
-      interaction.client,
+    return notifyAdminLogAndReply(
+      interaction,
       '⚠️ LFG Role Clear Failed',
-      `Couldn't clear LFG roles for <@${interaction.user.id}>: ${err.message}. Make sure the bot's role sits above them.`
+      `Couldn't clear LFG roles for <@${interaction.user.id}>: ${err.message}. Make sure the bot's role sits above them.`,
+      '⚠️ I couldn\'t clear your roles. Make sure my role sits above these roles.'
     );
-    return interaction.reply({
-      content: '⚠️ I couldn\'t clear your roles. Make sure my role sits above these roles.',
-      flags: MessageFlags.Ephemeral,
-    });
   }
 
   return interaction.reply({
@@ -380,7 +384,7 @@ function isValidColor(color) {
 
 // Renders a role's emoji as inline markup usable in message/embed text (e.g. a title).
 // Custom emoji need Discord's <:_:ID> markup to resolve by ID; unicode emoji render as-is.
-// Returns null if there's no valid emoji, so callers can fall back to a default.
+// Returns null if there's no valid emoji, so callers can omit it instead of rendering broken markup.
 function emojiMarkup(emoji) {
   if (!isValidEmoji(emoji)) return null;
   return isSnowflakeEmoji(emoji) ? `<:_:${emoji}>` : emoji;
@@ -404,6 +408,8 @@ module.exports = {
   ensureRoleExists,
   lfgRoleName,
   notifyAdminLog,
+  notifyAdminLogAndReply,
+  scheduleReplyCleanup,
   emojiMarkup,
   isValidEmoji,
   isValidColor,

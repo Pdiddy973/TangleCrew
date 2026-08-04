@@ -13,7 +13,6 @@ const {
   findCategoryOption,
   getActivityOptions,
   findActivityOption,
-  buildSizeOptions,
   findSizeOption,
   describeSizeOptions,
   parseSizeCap,
@@ -27,7 +26,14 @@ const {
   GROUP_FORMED_CLEANUP_DELAY_MS,
   computeStartTimeCleanupDelay,
 } = require('./lfgGroup');
-const { ensureRoleExists, lfgRoleName, notifyAdminLog, isValidColor, isValidEmoji } = require('./roleMenu');
+const {
+  ensureRoleExists,
+  lfgRoleName,
+  notifyAdminLog,
+  scheduleReplyCleanup,
+  isValidColor,
+  isValidEmoji,
+} = require('./roleMenu');
 
 // The Discord Forum Channel where /lfg-post posts get created as threads.
 // Create a Forum Channel in your server, copy its ID, and set this in .env.
@@ -36,7 +42,10 @@ const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
 // If everyone leaves and the post sits empty this long, auto-delete it instead of waiting for the start time.
 const EMPTY_GROUP_CLEANUP_DELAY_MS = 30 * 60 * 1000;
 
-// In-memory state, lost on restart/redeploy — fine for same-day LFG posts, but worth knowing if the bot redeploys mid-event.
+// How long the "✅ post created" confirmation stays up before auto-deleting.
+const POST_CREATED_MESSAGE_LIFETIME_MS = 30 * 1000;
+
+// In-memory state, lost on restart/redeploy — fine for same-day LFG posts, but worth knowing if the bot redeploys mid-activity.
 const setupSessions = new Map(); // userId -> { category, activity, size, time }
 const activeGroups = new Map(); // groupId -> group state
 
@@ -85,7 +94,7 @@ function buildSetupComponents(session) {
       .setCustomId('lfgpost:select:size')
       .setPlaceholder('3. Choose group size')
       .addOptions(
-        buildSizeOptions(activityOption).map((o) => ({
+        activityOption.sizeOptions.map((o) => ({
           value: o.value,
           label: o.label,
           default: session.size === o.value,
@@ -157,7 +166,7 @@ async function handleSetupSelect(interaction, field) {
     // Size options depend on the chosen activity's max player count.
     session.size = null;
     const activityOption = findActivityOption(session.category, session.activity);
-    const sizeChoices = buildSizeOptions(activityOption);
+    const sizeChoices = activityOption.sizeOptions;
     if (sizeChoices.length === 1) {
       // Only one possible size (e.g. Yama, max 2) — no real choice to make, so skip straight past this step instead of making them click it.
       session.size = sizeChoices[0].value;
@@ -193,6 +202,14 @@ async function openDescriptionModal(interaction) {
   await interaction.showModal(modal);
 }
 
+// Reports an issue to admin log, then aborts the setup flow with an ⚠️-prefixed message in place
+// of the description modal's reply. Shared by every /lfg-post failure path in the function below
+// so the pairing only needs to change in one place.
+async function abortWithAdminAlert(interaction, title, adminMessage, userMessage) {
+  await notifyAdminLog(interaction.client, title, adminMessage);
+  return interaction.update({ content: userMessage, components: [] });
+}
+
 // ---- Modal submit actually creates the LFG post ----
 async function handleDescriptionModalSubmit(interaction) {
   const session = getSession(interaction.user.id);
@@ -210,41 +227,32 @@ async function handleDescriptionModalSubmit(interaction) {
   const description = interaction.fields.getTextInputValue('description')?.trim() || null;
 
   if (!isValidColor(activityOption.color) || !isValidEmoji(activityOption.emoji)) {
-    await notifyAdminLog(
-      interaction.client,
+    return abortWithAdminAlert(
+      interaction,
       '⚠️ LFG Activity Misconfigured',
-      `**${activityOption.label}** is missing a valid color and/or emoji in roleMenu.js CATEGORIES — /lfg-post aborted for <@${interaction.user.id}>.`
+      `**${activityOption.label}** is missing a valid color and/or emoji in roleMenu.js CATEGORIES — /lfg-post aborted for <@${interaction.user.id}>.`,
+      `⚠️ **${activityOption.label}** isn't fully configured yet. Ask an admin to check its color/emoji in roleMenu.js.`
     );
-    return interaction.update({
-      content: `⚠️ **${activityOption.label}** isn't fully configured yet. Ask an admin to check its color/emoji in roleMenu.js.`,
-      components: [],
-    });
   }
 
   const guildRole = await ensureRoleExists(interaction.guild, activityOption.label);
   if (!guildRole) {
-    await notifyAdminLog(
-      interaction.client,
+    return abortWithAdminAlert(
+      interaction,
       '⚠️ LFG Role Creation Failed',
-      `Couldn't find or create **${lfgRoleName(activityOption.label)}** for <@${interaction.user.id}> via /lfg-post. Check the bot's **Manage Roles** permission.`
+      `Couldn't find or create **${lfgRoleName(activityOption.label)}** for <@${interaction.user.id}> via /lfg-post. Check the bot's **Manage Roles** permission.`,
+      `⚠️ I couldn't find or create the role **${lfgRoleName(activityOption.label)}**. Make sure I have the **Manage Roles** permission.`
     );
-    return interaction.update({
-      content: `⚠️ I couldn't find or create the role **${lfgRoleName(activityOption.label)}**. Make sure I have the **Manage Roles** permission.`,
-      components: [],
-    });
   }
 
   const forumChannel = await interaction.guild.channels.fetch(FORUM_CHANNEL_ID).catch(() => null);
   if (!forumChannel || forumChannel.type !== ChannelType.GuildForum) {
-    await notifyAdminLog(
-      interaction.client,
+    return abortWithAdminAlert(
+      interaction,
       '⚠️ LFG Forum Channel Misconfigured',
-      `<@${interaction.user.id}> tried /lfg-post but LFG_FORUM_CHANNEL_ID doesn't point to a valid Forum Channel.`
+      `<@${interaction.user.id}> tried /lfg-post but LFG_FORUM_CHANNEL_ID doesn't point to a valid Forum Channel.`,
+      '⚠️ LFG_FORUM_CHANNEL_ID doesn\'t point to a valid Forum Channel. Ask an admin to check the setup.'
     );
-    return interaction.update({
-      content: '⚠️ LFG_FORUM_CHANNEL_ID doesn\'t point to a valid Forum Channel. Ask an admin to check the setup.',
-      components: [],
-    });
   }
 
   const groupId = makeGroupId();
@@ -298,15 +306,12 @@ async function handleDescriptionModalSubmit(interaction) {
   } catch (err) {
     activeGroups.delete(groupId);
     console.error(`Could not create LFG post for group ${groupId}:`, err.message);
-    await notifyAdminLog(
-      interaction.client,
+    return abortWithAdminAlert(
+      interaction,
       '⚠️ LFG Post Creation Failed',
-      `Failed to create a post for <@${interaction.user.id}> (${roleLabel}): ${err.message}`
+      `Failed to create a post for <@${interaction.user.id}> (${roleLabel}): ${err.message}`,
+      '⚠️ Something went wrong creating the post. Please try again.'
     );
-    return interaction.update({
-      content: '⚠️ Something went wrong creating the post. Please try again.',
-      components: [],
-    });
   }
 
   group.threadId = thread.id;
@@ -320,7 +325,7 @@ async function handleDescriptionModalSubmit(interaction) {
     content: `✅ Your LFG post has been created: [Click here to view it](${threadLink})`,
     components: [],
   });
-  setTimeout(() => interaction.deleteReply().catch(() => {}), 30000);
+  scheduleReplyCleanup(interaction, POST_CREATED_MESSAGE_LIFETIME_MS, '/lfg-post confirmation message');
 }
 
 // Only the status word changes here — member count lives in the embed instead (updates via message edit, not the channel rename rate limit).

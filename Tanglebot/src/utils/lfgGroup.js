@@ -24,14 +24,8 @@ function findActivityOption(categoryKey, value) {
   return getActivityOptions(categoryKey).find((r) => r.value === value);
 }
 
-// Every activity's sizeOptions is set in roleMenu.js (see sizeRange/sizeRangeWithMass there) —
-// this just reads it back, keeping that range formula in one place.
-function buildSizeOptions(activityOption) {
-  return activityOption.sizeOptions;
-}
-
 function findSizeOption(activityOption, value) {
-  return buildSizeOptions(activityOption).find((o) => o.value === value);
+  return activityOption.sizeOptions.find((o) => o.value === value);
 }
 
 // Short descriptor shown next to an activity in the picker, e.g. "2-5" or "2-5, Mass".
@@ -161,7 +155,6 @@ module.exports = {
   findCategoryOption,
   getActivityOptions,
   findActivityOption,
-  buildSizeOptions,
   findSizeOption,
   describeSizeOptions,
   parseSizeCap,
