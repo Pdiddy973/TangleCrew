@@ -26,11 +26,10 @@ function loadEvents(client) {
     await syncCommands(client);
 
     const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
-    const ownerRoleId = process.env.OWNER_ROLE_ID;
     if (adminLogChannelId) {
       try {
         const channel = await client.channels.fetch(adminLogChannelId);
-        await channel.send(`<@&${ownerRoleId}> Bot is online and ready.`);
+        await channel.send('Bot is online and ready.');
       } catch (err) {
         console.error('Failed to send startup message to admin log channel:', err);
       }
