@@ -7,7 +7,7 @@ const {
   MessageFlags,
 } = require('discord.js');
 const { CATEGORY_OPTIONS, findCategoryOption, getActivityOptions, findActivityOption } = require('./lfgGroup');
-const { notifyAdminLog, replyEphemeral, isValidColor, isValidEmoji } = require('./roleMenu');
+const { notifyAdminLog, replyEphemeral, isValidColor, isValidEmoji, normalizeEmojiInput } = require('./roleMenu');
 
 // Suggestions aren't an operational alert like the rest of the LFG admin log traffic — yellow
 // signals "review this" rather than notifyAdminLog's default red "something's broken".
@@ -164,11 +164,11 @@ function buildNewActivityModal() {
       .setPlaceholder('#006400'),
     emoji: new TextInputBuilder()
       .setCustomId('emoji')
-      .setLabel('Emoji (custom ID or unicode, optional)')
+      .setLabel('Emoji (optional)')
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
-      .setMaxLength(30)
-      .setPlaceholder('e.g. 1234567890123456789 or 🔥'),
+      .setMaxLength(60)
+      .setPlaceholder('Use Discord\'s emoji picker, or paste/type one — an ID works too'),
   });
 }
 
@@ -200,10 +200,10 @@ function buildEditActivityModal(activityOption) {
       .setValue(activityOption.color),
     emoji: new TextInputBuilder()
       .setCustomId('emoji')
-      .setLabel('Emoji (custom ID or unicode)')
+      .setLabel('Emoji (use the picker to change it)')
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
-      .setMaxLength(30)
+      .setMaxLength(60)
       .setValue(activityOption.emoji),
   });
 }
@@ -233,7 +233,7 @@ async function handleNewActivitySubmit(interaction) {
   const label = interaction.fields.getTextInputValue('label').trim();
   const sizeText = interaction.fields.getTextInputValue('size').trim();
   const color = interaction.fields.getTextInputValue('color').trim() || '#006400';
-  const emoji = interaction.fields.getTextInputValue('emoji').trim() || 'PUT_EMOJI_ID_HERE';
+  const emoji = normalizeEmojiInput(interaction.fields.getTextInputValue('emoji')) || 'PUT_EMOJI_ID_HERE';
   const reason = interaction.fields.getTextInputValue('reason').trim();
 
   const size = parseSuggestedSize(sizeText);
@@ -272,7 +272,7 @@ async function handleEditActivitySubmit(interaction) {
   const label = interaction.fields.getTextInputValue('label').trim();
   const sizeText = interaction.fields.getTextInputValue('size').trim();
   const color = interaction.fields.getTextInputValue('color').trim();
-  const emoji = interaction.fields.getTextInputValue('emoji').trim();
+  const emoji = normalizeEmojiInput(interaction.fields.getTextInputValue('emoji'));
   const reason = interaction.fields.getTextInputValue('reason').trim();
 
   const size = parseSuggestedSize(sizeText);
