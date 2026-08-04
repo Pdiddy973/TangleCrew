@@ -25,31 +25,17 @@ const {
   GROUP_FORMED_CLEANUP_DELAY_MS,
   computeStartTimeCleanupDelay,
 } = require('./lfgGroup');
-const { ensureRoleExists, lfgRoleName } = require('./roleMenu');
+const { ensureRoleExists, lfgRoleName, notifyAdminLog } = require('./roleMenu');
 
 // The Discord Forum Channel where /lfg-forum posts get created as threads.
 // Create a Forum Channel in your server, copy its ID, and set this in .env.
 const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
 
-// Reports a failure to ADMIN_LOG_CHANNEL_ID, if configured. Silently skipped if unset.
-async function notifyAdminLog(client, content) {
-  const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
-  if (!adminLogChannelId) return;
-
-  try {
-    const channel = await client.channels.fetch(adminLogChannelId);
-    await channel.send({ content });
-  } catch (err) {
-    console.error('Could not send LFG forum failure to admin log:', err.message);
-  }
-}
-
-// Separate in-memory state from the regular /lfg command, so both versions can run side by side without interfering with each other.
-// Lost on restart/redeploy, same caveat as the regular version.
+// In-memory state, lost on restart/redeploy — fine for same-day LFG posts, but worth knowing if the bot redeploys mid-event.
 const setupSessions = new Map(); // userId -> { category, activity, size, time }
 const activeGroups = new Map(); // groupId -> group state
 
-// ---- Setup UI (accordion, identical shape to /lfg, different customId prefix) ----
+// ---- Setup UI (accordion: Category -> Activity -> Size -> Start Time) ----
 // No separate "Create" button.
 // Once Start Time (the last dropdown) is filled, this opens the description modal directly.
 function getSession(userId) {
@@ -220,6 +206,11 @@ async function handleDescriptionModalSubmit(interaction) {
 
   const guildRole = await ensureRoleExists(interaction.guild, activityOption.roleName);
   if (!guildRole) {
+    await notifyAdminLog(
+      interaction.client,
+      '⚠️ LFG Role Creation Failed',
+      `Couldn't find or create **${lfgRoleName(activityOption.roleName)}** for <@${interaction.user.id}> via /lfg-forum. Check the bot's **Manage Roles** permission.`
+    );
     return interaction.reply({
       content: `⚠️ I couldn't find or create the role **${lfgRoleName(activityOption.roleName)}**. Make sure I have the **Manage Roles** permission.`,
       flags: MessageFlags.Ephemeral,
@@ -228,6 +219,11 @@ async function handleDescriptionModalSubmit(interaction) {
 
   const forumChannel = await interaction.guild.channels.fetch(FORUM_CHANNEL_ID).catch(() => null);
   if (!forumChannel || forumChannel.type !== ChannelType.GuildForum) {
+    await notifyAdminLog(
+      interaction.client,
+      '⚠️ LFG Forum Channel Misconfigured',
+      `<@${interaction.user.id}> tried /lfg-forum but LFG_FORUM_CHANNEL_ID doesn't point to a valid Forum Channel.`
+    );
     return interaction.reply({
       content: '⚠️ LFG_FORUM_CHANNEL_ID doesn\'t point to a valid Forum Channel. Ask an admin to check the setup.',
       flags: MessageFlags.Ephemeral,
@@ -287,7 +283,8 @@ async function handleDescriptionModalSubmit(interaction) {
     console.error(`Could not create LFG forum post for group ${groupId}:`, err.message);
     await notifyAdminLog(
       interaction.client,
-      `⚠️ Failed to create an LFG forum post for <@${interaction.user.id}> (${roleLabel}): ${err.message}`
+      '⚠️ LFG Forum Post Creation Failed',
+      `Failed to create a forum post for <@${interaction.user.id}> (${roleLabel}): ${err.message}`
     );
     return interaction.reply({
       content: '⚠️ Something went wrong creating the forum post. Please try again.',

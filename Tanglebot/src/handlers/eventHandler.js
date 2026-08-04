@@ -9,10 +9,6 @@ const {
 } = require('../utils/honeypot');
 const { handleRoleMenuButtonInteraction, syncCategoryRoles } = require('../utils/roleMenu');
 const {
-  handleLfgSelectInteraction,
-  handleLfgGroupButtonInteraction,
-} = require('../utils/lfgGroup');
-const {
   handleLfgForumSelectInteraction,
   handleLfgForumModalSubmit,
   handleLfgForumGroupButtonInteraction,
@@ -100,13 +96,6 @@ function loadEvents(client) {
           console.error('Role menu button interaction error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong updating your roles.');
         }
-      } else if (interaction.customId.startsWith('lfggroup:')) {
-        try {
-          await handleLfgGroupButtonInteraction(interaction);
-        } catch (err) {
-          console.error('LFG group button interaction error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong updating that group.');
-        }
       } else if (interaction.customId.startsWith('lfgforumgroup:')) {
         try {
           await handleLfgForumGroupButtonInteraction(interaction);
@@ -125,13 +114,6 @@ function loadEvents(client) {
         } catch (err) {
           console.error('LFG forum select interaction error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong updating your LFG forum setup.');
-        }
-      } else if (interaction.customId.startsWith('lfg:')) {
-        try {
-          await handleLfgSelectInteraction(interaction);
-        } catch (err) {
-          console.error('LFG select interaction error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong updating your LFG setup.');
         }
       }
       return;

@@ -17,6 +17,25 @@ function lfgRoleName(baseName) {
   return `${ROLE_PREFIX}${baseName}`;
 }
 
+// Reports an operational issue to ADMIN_LOG_CHANNEL_ID as a red embed. Silently skipped if unset.
+async function notifyAdminLog(client, title, description) {
+  const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
+  if (!adminLogChannelId) return;
+
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setDescription(description)
+    .setColor(0xed4245)
+    .setTimestamp();
+
+  try {
+    const channel = await client.channels.fetch(adminLogChannelId);
+    await channel.send({ embeds: [embed] });
+  } catch (err) {
+    console.error('Could not send LFG admin log notification:', err.message);
+  }
+}
+
 // Builds a size-options list of 2..max players, plus an appended "Mass" option (for "N/mass" activities).
 function sizeRangeWithMass(max) {
   const options = [];
@@ -28,7 +47,7 @@ function sizeRangeWithMass(max) {
 }
 
 // ---- Category definitions ----
-// Feeds /lfg-pings (buttons) and the /lfg + /lfg-forum Category -> Activity accordion.
+// Feeds /lfg-pings (buttons) and the /lfg-forum Category -> Activity accordion.
 // Missing roles are auto-created as "LFG-<roleName>" (see ROLE_PREFIX above).
 // Rename any pre-existing plain-named role to add the "LFG-" prefix so it's reused instead of duplicated.
 //
@@ -187,6 +206,11 @@ async function handleRoleToggle(interaction, categoryKey, value) {
   const role = await ensureRoleExists(guild, roleConfig.roleName);
 
   if (!role) {
+    await notifyAdminLog(
+      interaction.client,
+      '⚠️ LFG Role Creation Failed',
+      `Couldn't find or create **${lfgRoleName(roleConfig.roleName)}** for <@${interaction.user.id}> via /lfg-pings. Check the bot's **Manage Roles** permission.`
+    );
     return interaction.reply({
       content: `⚠️ I couldn't find or create the role **${lfgRoleName(roleConfig.roleName)}**. Make sure I have the **Manage Roles** permission.`,
       flags: MessageFlags.Ephemeral,
@@ -201,6 +225,11 @@ async function handleRoleToggle(interaction, categoryKey, value) {
     }
   } catch (err) {
     console.error('Role toggle error:', err);
+    await notifyAdminLog(
+      interaction.client,
+      '⚠️ LFG Role Assignment Failed',
+      `Couldn't add/remove **${lfgRoleName(roleConfig.roleName)}** for <@${interaction.user.id}> via /lfg-pings: ${err.message}. Make sure the bot's role sits above it.`
+    );
     return interaction.reply({
       content: '⚠️ I couldn\'t update your roles. Make sure my role sits above these roles.',
       flags: MessageFlags.Ephemeral,
@@ -275,6 +304,11 @@ async function syncCategoryRoles(guild) {
       `LFG role sync: failed to create ${failed.length} role(s): ${failed.join(', ')}. ` +
       'Make sure the bot has the Manage Roles permission.'
     );
+    await notifyAdminLog(
+      guild.client,
+      '⚠️ LFG Role Sync Failed at Startup',
+      `Failed to create ${failed.length} role(s): ${failed.join(', ')}. Check the bot's **Manage Roles** permission.`
+    );
   }
 }
 
@@ -306,4 +340,5 @@ module.exports = {
   ensureRoleExists,
   syncCategoryRoles,
   lfgRoleName,
+  notifyAdminLog,
 };
