@@ -244,9 +244,12 @@ function buildClearAllRow() {
 
 function buildCategoryButtonRows(categoryKey, member) {
   const category = CATEGORIES[categoryKey];
+  // One pass over the member's own (small) role list instead of scanning the whole guild's role
+  // cache per category role (memberHasRoleName's old approach, up to 15x per render here).
+  const memberRoleNames = new Set(member.roles.cache.filter((r) => r.name.startsWith(ROLE_PREFIX)).map((r) => r.name));
 
   const buttons = category.roles.map((r) => {
-    const has = memberHasRoleName(member, r.label);
+    const has = memberRoleNames.has(lfgRoleName(r.label));
     const btn = new ButtonBuilder()
       .setCustomId(`roles:toggle:${categoryKey}:${r.value}`)
       .setLabel(r.label)
@@ -379,11 +382,6 @@ async function ensureRoleExists(guild, name) {
     console.error(`[LFG] Could not auto-create role "${lfgRoleName(name)}":`, err.message);
     return null;
   }
-}
-
-function memberHasRoleName(member, roleName) {
-  const role = findRole(member.guild, roleName);
-  return role ? member.roles.cache.has(role.id) : false;
 }
 
 // A real Discord snowflake ID is a string of digits (typically 17-20 long).

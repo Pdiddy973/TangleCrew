@@ -385,18 +385,15 @@ async function renameThreadChannel(channel, group) {
   }
 }
 
-async function renameThread(interaction, group) {
-  return renameThreadChannel(interaction.channel, group);
-}
-
 // Re-renders the main group post (embed + Join/Leave/Start Now/Disband row) by editing its
 // starter message directly, for flows with no interaction of their own to call .update() on —
 // the queue-offer buttons live on a separate activity message (see sendOrEditActivity), and the
 // timeout-triggered skip has no interaction at all.
 async function updateMainPost(channel, group) {
   try {
-    const starterMessage = await channel.fetchStarterMessage();
-    await starterMessage.edit({ embeds: [buildGroupEmbed(group)], components: [buildGroupRow(group.id)] });
+    // A forum thread's starter message shares the thread's own id, so this edits it directly by
+    // id (one PATCH) instead of fetchStarterMessage() + edit() (a GET followed by the PATCH).
+    await channel.messages.edit(channel.id, { embeds: [buildGroupEmbed(group)], components: [buildGroupRow(group.id)] });
   } catch (err) {
     if (!isAlreadyGoneError(err)) console.error(`[LFG] Could not update post ${group.id}:`, err.message);
   }
@@ -404,8 +401,9 @@ async function updateMainPost(channel, group) {
 
 // Re-renames the thread title as the "Start: in X" countdown bucket ticks down (see
 // describeStartCountdown/computeCountdownRefreshDelay in lfgGroup.js), so people can see roughly
-// when a post starts without opening it. Self-reschedules until the start time passes or the
-// group closes/disbands (stopCountdownRefresh), at which point the title stops changing on its own.
+// when a post starts without opening it. Self-reschedules until the start time passes, or the
+// group disbands/starts early (stopCountdownRefresh) — filling up does NOT stop it, since the
+// countdown to start time is still meaningful for a full group (see handleJoinButton).
 function scheduleCountdownRefresh(client, group) {
   if (group.countdownTimeoutId) clearTimeout(group.countdownTimeoutId);
   const delay = computeCountdownRefreshDelay(group.timeEpoch);
@@ -517,19 +515,22 @@ function cleanupStaleGroup(group) {
 // (QUEUE_OFFER_TIMEOUT_MS); otherwise reopen the group to the public Join button. Always
 // re-renders the main post (queue count or status changed) and the activity notice —
 // precedingText, if given, is prepended to it so e.g. "X left the group" and "the spot is now
-// offered to Y" land as one edit, not two. autoDelete only applies to the reopen notice (no
-// buttons to lose) — never to a queue offer, which needs to stay up for the pinged person.
-async function advanceQueueOrReopen(client, channel, group, precedingText = '', autoDelete = false) {
+// offered to Y" land as one edit, not two. The reopen notice always auto-deletes — it's plain,
+// buttonless information regardless of who triggered it — while a queue offer never does, since
+// its Accept/Decline buttons need to stay up for the pinged person.
+async function advanceQueueOrReopen(client, channel, group, precedingText = '') {
   clearPendingOffer(group);
 
   if (group.queue.length === 0) {
     group.status = 'open';
-    await renameThreadChannel(channel, group);
     scheduleCountdownRefresh(client, group);
     refreshCleanupSchedule(client, group);
-    await updateMainPost(channel, group);
     const text = [precedingText, '🔓 **This group has space again and is accepting new members!**'].filter(Boolean).join('\n\n');
-    await sendOrEditActivity(channel, group, text, undefined, { autoDelete });
+    await Promise.all([
+      renameThreadChannel(channel, group),
+      updateMainPost(channel, group),
+      sendOrEditActivity(channel, group, text, undefined, { autoDelete: true }),
+    ]);
     return;
   }
 
@@ -625,7 +626,7 @@ async function handleJoinButton(interaction, groupId) {
   group.members.add(interaction.user.id);
   // Not empty anymore either way (whether this fills it or not) — drop any empty-group cleanup countdown.
   cancelScheduledCleanup(group);
-  const justFilled = group.sizeCap !== Infinity && group.members.size >= group.sizeCap;
+  const justFilled = isGroupFull(group);
   if (justFilled) {
     group.status = 'closed';
   }
@@ -634,17 +635,25 @@ async function handleJoinButton(interaction, groupId) {
   const row = buildGroupRow(groupId);
 
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
-  await followUpEphemeral(interaction, '✅ You joined the group!');
 
+  // Independent Discord resources (the ephemeral reply, the thread name, the activity message) —
+  // run them concurrently instead of one after another. updateGroupMessage above must still go
+  // first: it's what acknowledges the interaction, which followUpEphemeral below requires.
   if (justFilled) {
     // Full doesn't mean "started" — the countdown keeps running (it still self-stops once the
     // start time actually passes, see computeCountdownRefreshDelay). Stopping it here used to
     // freeze the title forever on whatever bucket it was in when the group filled, since nothing
     // else naturally re-triggers it for a group nobody leaves.
-    await renameThread(interaction, group);
-    await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🎉 **Group formed, Good luck!**`, undefined, { autoDelete: true });
+    await Promise.all([
+      followUpEphemeral(interaction, '✅ You joined the group!'),
+      renameThreadChannel(interaction.channel, group),
+      sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🎉 **Group formed, Good luck!**`, undefined, { autoDelete: true }),
+    ]);
   } else {
-    await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🔔 <@${interaction.user.id}> joined the group!`, undefined, { autoDelete: true });
+    await Promise.all([
+      followUpEphemeral(interaction, '✅ You joined the group!'),
+      sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🔔 <@${interaction.user.id}> joined the group!`, undefined, { autoDelete: true }),
+    ]);
   }
 }
 
@@ -679,7 +688,7 @@ async function handleLeaveButton(interaction, groupId) {
     // A full group doesn't just reopen the instant a spot frees — if anyone's queued, they get
     // first refusal (see advanceQueueOrReopen); only reopens to the public Join button once the
     // queue's empty.
-    await advanceQueueOrReopen(interaction.client, interaction.channel, group, leftText, true);
+    await advanceQueueOrReopen(interaction.client, interaction.channel, group, leftText);
     return;
   }
 
@@ -717,7 +726,7 @@ async function handleQueueAcceptButton(interaction, groupId) {
   clearPendingOffer(group);
   group.queue.shift();
   group.members.add(interaction.user.id);
-  group.status = group.sizeCap !== Infinity && group.members.size >= group.sizeCap ? 'closed' : 'open';
+  group.status = isGroupFull(group) ? 'closed' : 'open';
 
   await updateMainPost(interaction.channel, group);
   await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n✅ <@${interaction.user.id}> accepted the open spot and joined!`);
@@ -759,10 +768,12 @@ async function handleStartNowButton(interaction, groupId) {
   const embed = buildGroupEmbed(group);
   const row = buildGroupRow(groupId);
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
-  await followUpEphemeral(interaction, '✅ Started the group now!');
 
-  await renameThread(interaction, group);
-  await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🚀 **<@${interaction.user.id}> started this group now!**`);
+  await Promise.all([
+    followUpEphemeral(interaction, '✅ Started the group now!'),
+    renameThreadChannel(interaction.channel, group),
+    sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🚀 **<@${interaction.user.id}> started this group now!**`),
+  ]);
 }
 
 // Looks the group up directly rather than via requireGroup, since requireGroup treats an
@@ -829,11 +840,13 @@ async function handleCancelDisbandButton(interaction, groupId) {
 
   group.status = isGroupFull(group) ? 'closed' : 'open';
 
-  await renameThreadChannel(interaction.channel, group);
   if (group.status === 'open') scheduleCountdownRefresh(interaction.client, group);
   refreshCleanupSchedule(interaction.client, group);
-  await updateMainPost(interaction.channel, group);
-  await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n✅ <@${interaction.user.id}> cancelled the disband — this group is staying open!`);
+  await Promise.all([
+    renameThreadChannel(interaction.channel, group),
+    updateMainPost(interaction.channel, group),
+    sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n✅ <@${interaction.user.id}> cancelled the disband — this group is staying open!`),
+  ]);
 }
 
 function schedulePostGroupCleanup(client, group, delayMs) {

@@ -18,6 +18,36 @@ const {
   handleLfgSuggestionModalSubmit,
 } = require('../utils/lfgSuggestion');
 
+// customId-prefix routing tables for InteractionCreate, one per interaction kind. errorReply is
+// optional — omitted for the honeypot button so a mis-click there stays silent instead of
+// tipping off whoever triggered it, matching every route's prior individual behavior.
+const BUTTON_ROUTES = [
+  { prefix: 'hp:', handler: handleHoneypotButtonInteraction, errorLabel: 'Honeypot button interaction error:' },
+  { prefix: 'roles:', handler: handleRoleMenuButtonInteraction, errorLabel: 'Role menu button interaction error:', errorReply: 'Something went wrong updating your roles.' },
+  { prefix: 'lfgpostgroup:', handler: handleLfgPostGroupButtonInteraction, errorLabel: '[LFG] Post group button interaction error:', errorReply: 'Something went wrong updating that group.' },
+];
+const SELECT_ROUTES = [
+  { prefix: 'lfgpost:', handler: handleLfgPostSelectInteraction, errorLabel: '[LFG] Post select interaction error:', errorReply: 'Something went wrong updating your LFG post setup.' },
+  { prefix: 'lfgsuggestion:', handler: handleLfgSuggestionSelectInteraction, errorLabel: '[LFG] Suggestion select interaction error:', errorReply: 'Something went wrong with your suggestion.' },
+];
+const MODAL_ROUTES = [
+  { prefix: 'lfgpost:', handler: handleLfgPostModalSubmit, errorLabel: '[LFG] Post modal submit error:', errorReply: 'Something went wrong creating your LFG post.' },
+  { prefix: 'lfgsuggestion:', handler: handleLfgSuggestionModalSubmit, errorLabel: '[LFG] Suggestion modal submit error:', errorReply: 'Something went wrong sending your suggestion.' },
+];
+
+// Finds the route whose prefix matches this interaction's customId (if any) and runs it, logging
+// and optionally replying on failure — the shared shape every button/select/modal route above needs.
+async function dispatchByCustomIdPrefix(interaction, routes) {
+  const route = routes.find((r) => interaction.customId.startsWith(r.prefix));
+  if (!route) return;
+  try {
+    await route.handler(interaction);
+  } catch (err) {
+    console.error(route.errorLabel, err);
+    if (route.errorReply) await replyOrFollowUp(interaction, route.errorReply);
+  }
+}
+
 function loadEvents(client) {
   const submissionConfig = loadSubmissionConfig();
   client.submissionConfig = submissionConfig;
@@ -77,65 +107,17 @@ function loadEvents(client) {
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton()) {
-      if (interaction.customId.startsWith('hp:')) {
-        try {
-          await handleHoneypotButtonInteraction(interaction);
-        } catch (err) {
-          console.error('Honeypot button interaction error:', err);
-        }
-      } else if (interaction.customId.startsWith('roles:')) {
-        try {
-          await handleRoleMenuButtonInteraction(interaction);
-        } catch (err) {
-          console.error('Role menu button interaction error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong updating your roles.');
-        }
-      } else if (interaction.customId.startsWith('lfgpostgroup:')) {
-        try {
-          await handleLfgPostGroupButtonInteraction(interaction);
-        } catch (err) {
-          console.error('[LFG] Post group button interaction error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong updating that group.');
-        }
-      }
+      await dispatchByCustomIdPrefix(interaction, BUTTON_ROUTES);
       return;
     }
 
     if (interaction.isStringSelectMenu()) {
-      if (interaction.customId.startsWith('lfgpost:')) {
-        try {
-          await handleLfgPostSelectInteraction(interaction);
-        } catch (err) {
-          console.error('[LFG] Post select interaction error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong updating your LFG post setup.');
-        }
-      } else if (interaction.customId.startsWith('lfgsuggestion:')) {
-        try {
-          await handleLfgSuggestionSelectInteraction(interaction);
-        } catch (err) {
-          console.error('[LFG] Suggestion select interaction error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong with your suggestion.');
-        }
-      }
+      await dispatchByCustomIdPrefix(interaction, SELECT_ROUTES);
       return;
     }
 
     if (interaction.isModalSubmit()) {
-      if (interaction.customId.startsWith('lfgpost:')) {
-        try {
-          await handleLfgPostModalSubmit(interaction);
-        } catch (err) {
-          console.error('[LFG] Post modal submit error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong creating your LFG post.');
-        }
-      } else if (interaction.customId.startsWith('lfgsuggestion:')) {
-        try {
-          await handleLfgSuggestionModalSubmit(interaction);
-        } catch (err) {
-          console.error('[LFG] Suggestion modal submit error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong sending your suggestion.');
-        }
-      }
+      await dispatchByCustomIdPrefix(interaction, MODAL_ROUTES);
       return;
     }
 
