@@ -7,7 +7,7 @@ const {
   loadHoneypotConfig,
   sendHoneypotStartupMessage,
 } = require('../utils/honeypot');
-const { handleRoleMenuButtonInteraction } = require('../utils/roleMenu');
+const { handleRoleMenuButtonInteraction, syncCategoryRoles } = require('../utils/roleMenu');
 const {
   handleLfgSelectInteraction,
   handleLfgGroupButtonInteraction,
@@ -34,6 +34,16 @@ function loadEvents(client) {
   client.once(Events.ClientReady, async (c) => {
     console.log(`Logged in as ${c.user.tag}`);
     await syncCommands(client);
+
+    const clanId = process.env.CLAN_ID;
+    if (clanId) {
+      try {
+        const guild = await client.guilds.fetch(clanId);
+        await syncCategoryRoles(guild);
+      } catch (err) {
+        console.error('Failed to sync LFG roles on startup:', err.message);
+      }
+    }
 
     const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
     const ownerRoleId = process.env.OWNER_ROLE_ID;

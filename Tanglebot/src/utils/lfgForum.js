@@ -27,6 +27,7 @@ const {
   GROUP_FORMED_CLEANUP_DELAY_MS,
   computeStartTimeCleanupDelay,
 } = require('./lfgGroup');
+const { ensureRoleExists, lfgRoleName } = require('./roleMenu');
 
 // The Discord Forum Channel where /lfg-forum posts get created as threads.
 // Create a Forum Channel in your server, copy its ID, and set this in .env.
@@ -208,10 +209,10 @@ async function handleDescriptionModalSubmit(interaction) {
   const timeOption = findTimeOption(session.time);
   const description = interaction.fields.getTextInputValue('description')?.trim() || null;
 
-  const guildRole = interaction.guild.roles.cache.find((r) => r.name === activityOption.roleName);
+  const guildRole = await ensureRoleExists(interaction.guild, activityOption.roleName);
   if (!guildRole) {
     return interaction.reply({
-      content: `⚠️ The role **${activityOption.roleName}** doesn't exist yet. Ask an admin to create it.`,
+      content: `⚠️ I couldn't find or create the role **${lfgRoleName(activityOption.roleName)}**. Make sure I have the **Manage Roles** permission.`,
       flags: MessageFlags.Ephemeral,
     });
   }

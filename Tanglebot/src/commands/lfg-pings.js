@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
-const { buildMenuEmbed, buildCategoryButtonsRow } = require('../utils/roleMenu');
+const { buildMenuEmbed, buildCategoryButtonsRow, MENU_MESSAGE_LIFETIME_MS } = require('../utils/roleMenu');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -17,6 +17,6 @@ module.exports = {
       interaction.deleteReply().catch((err) => {
         console.error('Could not delete /lfg-pings menu message:', err.message);
       });
-    }, 60 * 1000);
+    }, MENU_MESSAGE_LIFETIME_MS);
   },
 };

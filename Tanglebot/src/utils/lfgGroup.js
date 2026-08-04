@@ -6,16 +6,21 @@ const {
   StringSelectMenuBuilder,
   MessageFlags,
 } = require('discord.js');
-const { CATEGORIES } = require('./roleMenu');
+const { CATEGORIES, ensureRoleExists, lfgRoleName } = require('./roleMenu');
 
-// Top-level accordion categories. Order matches how they're shown in the
-// first dropdown. Add a 'minigames' entry here (and to roleMenu.js's
-// CATEGORIES) later to extend this to Minigame/Skilling.
-const CATEGORY_OPTIONS = [
-  { key: 'raids', label: 'Raid' },
-  { key: 'bossing', label: 'Boss' },
-  { key: 'minigames', label: 'Skilling/Minigame' },
-];
+// Top-level accordion categories shown in the first /lfg and /lfg-forum
+// dropdown. Derived from roleMenu.js's CATEGORIES so a new category added
+// there is never missed here — no second place to update. A couple of
+// entries use shorter dropdown text than their /lfg-pings button label
+// (CATEGORY_LABEL_OVERRIDES); everything else falls back to buttonLabel.
+const CATEGORY_LABEL_OVERRIDES = {
+  raids: 'Raid',
+  bossing: 'Boss',
+};
+const CATEGORY_OPTIONS = Object.values(CATEGORIES).map((c) => ({
+  key: c.key,
+  label: CATEGORY_LABEL_OVERRIDES[c.key] ?? c.buttonLabel,
+}));
 
 function findCategoryOption(key) {
   return CATEGORY_OPTIONS.find((o) => o.key === key);
@@ -314,10 +319,10 @@ async function handleCreatePost(interaction) {
   const sizeOption = findSizeOption(activityOption, session.size);
   const timeOption = findTimeOption(session.time);
 
-  const guildRole = interaction.guild.roles.cache.find((r) => r.name === activityOption.roleName);
+  const guildRole = await ensureRoleExists(interaction.guild, activityOption.roleName);
   if (!guildRole) {
     return interaction.reply({
-      content: `⚠️ The role **${activityOption.roleName}** doesn't exist yet. Ask an admin to create it.`,
+      content: `⚠️ I couldn't find or create the role **${lfgRoleName(activityOption.roleName)}**. Make sure I have the **Manage Roles** permission.`,
       flags: MessageFlags.Ephemeral,
     });
   }

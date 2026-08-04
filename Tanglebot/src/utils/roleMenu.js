@@ -7,12 +7,17 @@ const {
 } = require('discord.js');
 
 // How long the ephemeral role menus stay open before auto-deleting.
-// Roles already assigned are unaffected either way — this only removes
-// the menu message itself.
+// Roles already assigned are unaffected — this only deletes the menu message.
 const MENU_MESSAGE_LIFETIME_MS = 60 * 1000;
 
-// Builds a size-options list of 2..max players, plus an appended "Mass"
-// option — used for activities marked "N/mass" (uncapped mass version).
+// Roles this system manages get this prefix (e.g. "LFG-Yama") so they're easy to spot in the role list.
+const ROLE_PREFIX = 'LFG-';
+
+function lfgRoleName(baseName) {
+  return `${ROLE_PREFIX}${baseName}`;
+}
+
+// Builds a size-options list of 2..max players, plus an appended "Mass" option (for "N/mass" activities).
 function sizeRangeWithMass(max) {
   const options = [];
   for (let n = 2; n <= max; n++) {
@@ -23,10 +28,30 @@ function sizeRangeWithMass(max) {
 }
 
 // ---- Category definitions ----
-// Each category gets its own top-level button (shown by /lfg-pings),
-// which opens a follow-up ephemeral menu with one toggle button per role.
-// The same data also feeds the /lfg and /lfg-forum Category -> Activity
-// accordion. Role names must exactly match roles that exist in your server.
+// Feeds /lfg-pings (buttons) and the /lfg + /lfg-forum Category -> Activity accordion.
+// Missing roles are auto-created as "LFG-<roleName>" (see ROLE_PREFIX above).
+// Rename any pre-existing plain-named role to add the "LFG-" prefix so it's reused instead of duplicated.
+//
+// ---- Copy/paste templates ----
+//
+// Role:
+//   { value: 'unique_key', label: 'Display Name', roleName: 'Exact Name', maxPlayers: N },
+//
+// Role with a "Mass" size option:
+//   { value: 'unique_key', label: 'Display Name', roleName: 'Exact Name', maxPlayers: N, sizeOptions: sizeRangeWithMass(N) },
+//
+// Role with a custom emoji:
+//   { value: 'unique_key', label: 'Display Name', emoji: { name: 'emoji_name', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Exact Name', maxPlayers: N },
+//
+// New category:
+//   new_key: {
+//     key: 'new_key',
+//     buttonLabel: 'Label',
+//     buttonEmoji: '🔥',
+//     buttonStyle: ButtonStyle.Primary,
+//     prompt: 'Pick the activities you want to be pingable for. Selected ones turn red and stay red until you click them again.',
+//     roles: [ /* role entries above */ ],
+//   },
 const CATEGORIES = {
   bossing: {
     key: 'bossing',
@@ -34,9 +59,9 @@ const CATEGORIES = {
     buttonEmoji: { name: 'bossing', id: '1381713946591105187' },
     buttonStyle: ButtonStyle.Primary,
     prompt: 'Pick the bosses you want to be pingable for. Selected ones turn red and stay red until you click them again.',
-    // Emojis are each boss's pet. Discord has no built-in OSRS pet emojis,
-    // so these must be CUSTOM emojis uploaded to your server. Upload the
-    // pet image, then replace PUT_EMOJI_ID_HERE with its real ID.
+    // Emojis are each boss's pet.
+    // Discord has no built-in OSRS pet emojis, so these must be CUSTOM emojis uploaded to your server.
+    // Upload the pet image, then replace PUT_EMOJI_ID_HERE with its real ID.
     roles: [
       { value: 'yama', label: 'Yama', emoji: { name: 'yami', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Yama', maxPlayers: 2 },
       { value: 'nightmare', label: 'Nightmare', emoji: { name: 'littlenightmare', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Nightmare', maxPlayers: 5, sizeOptions: sizeRangeWithMass(5) },
@@ -159,11 +184,11 @@ async function handleRoleToggle(interaction, categoryKey, value) {
 
   const guild = interaction.guild;
   const member = interaction.member;
-  const role = findRole(guild, roleConfig.roleName);
+  const role = await ensureRoleExists(guild, roleConfig.roleName);
 
   if (!role) {
     return interaction.reply({
-      content: `⚠️ The role **${roleConfig.roleName}** doesn't exist yet. Ask an admin to create it.`,
+      content: `⚠️ I couldn't find or create the role **${lfgRoleName(roleConfig.roleName)}**. Make sure I have the **Manage Roles** permission.`,
       flags: MessageFlags.Ephemeral,
     });
   }
@@ -203,8 +228,54 @@ async function handleRoleMenuButtonInteraction(interaction) {
   }
 }
 
+// Looks up the prefixed role for a base name (e.g. "Yama" -> "LFG-Yama").
 function findRole(guild, name) {
-  return guild.roles.cache.find((r) => r.name === name);
+  return guild.roles.cache.find((r) => r.name === lfgRoleName(name));
+}
+
+// Finds the role, creating it first if it's missing.
+async function ensureRoleExists(guild, name) {
+  const existing = findRole(guild, name);
+  if (existing) return existing;
+
+  try {
+    const role = await guild.roles.create({
+      name: lfgRoleName(name),
+      mentionable: true,
+      reason: 'Auto-created for the LFG system (roleMenu.js CATEGORIES)',
+    });
+    console.log(`Created missing LFG role: "${role.name}"`);
+    return role;
+  } catch (err) {
+    console.error(`Could not auto-create LFG role "${lfgRoleName(name)}":`, err.message);
+    return null;
+  }
+}
+
+// Creates any CATEGORIES role missing from the guild.
+// Runs once at bot startup (see eventHandler.js).
+async function syncCategoryRoles(guild) {
+  await guild.roles.fetch(); // make sure the cache is fresh before checking
+
+  const roleNames = new Set();
+  for (const category of Object.values(CATEGORIES)) {
+    for (const role of category.roles) {
+      roleNames.add(role.roleName);
+    }
+  }
+
+  const failed = [];
+  for (const name of roleNames) {
+    const role = await ensureRoleExists(guild, name);
+    if (!role) failed.push(lfgRoleName(name));
+  }
+
+  if (failed.length > 0) {
+    console.error(
+      `LFG role sync: failed to create ${failed.length} role(s): ${failed.join(', ')}. ` +
+      'Make sure the bot has the Manage Roles permission.'
+    );
+  }
 }
 
 function memberHasRoleName(member, roleName) {
@@ -213,8 +284,7 @@ function memberHasRoleName(member, roleName) {
 }
 
 // A real Discord snowflake ID is a string of digits (typically 17-20 long).
-// This catches leftover placeholders like "PUT_EMOJI_ID_HERE" so we don't
-// send Discord an invalid emoji and have the whole interaction silently fail.
+// This catches leftover placeholders like "PUT_EMOJI_ID_HERE" so we don't send an invalid emoji and silently fail the interaction.
 function isValidEmoji(emoji) {
   return !!emoji && typeof emoji.id === 'string' && /^\d{15,25}$/.test(emoji.id);
 }
@@ -229,7 +299,11 @@ function chunkIntoRows(items, size) {
 
 module.exports = {
   CATEGORIES,
+  MENU_MESSAGE_LIFETIME_MS,
   buildMenuEmbed,
   buildCategoryButtonsRow,
   handleRoleMenuButtonInteraction,
+  ensureRoleExists,
+  syncCategoryRoles,
+  lfgRoleName,
 };
