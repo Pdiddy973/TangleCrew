@@ -367,7 +367,10 @@ async function handleDescriptionModalSubmit(interaction) {
 // (updates via message edit, not the channel rename rate limit).
 // The creator isn't included here (it's in the embed footer instead) to keep the title short — Discord thread/channel names are capped at 100 characters.
 function buildThreadName(group, statusWord) {
-  const name = `[${statusWord}] - ${group.roleLabel} - Start: ${describeStartCountdown(group.timeEpoch)}`;
+  const countdown = describeStartCountdown(group.timeEpoch);
+  // "Start: Started" reads oddly once it's actually begun — drop the "Start:" label at that point.
+  const startLabel = countdown === 'Started' ? countdown : `Start: ${countdown}`;
+  const name = `[${statusWord}] - ${group.roleLabel} - ${startLabel}`;
   return name.length > 100 ? `${name.slice(0, 99)}…` : name;
 }
 
@@ -645,13 +648,13 @@ async function handleJoinButton(interaction, groupId) {
     // freeze the title forever on whatever bucket it was in when the group filled, since nothing
     // else naturally re-triggers it for a group nobody leaves.
     await Promise.all([
-      followUpEphemeral(interaction, '✅ You joined the group!'),
+      followUpEphemeral(interaction, '✅ You joined the group!', { autoDelete: true }),
       renameThreadChannel(interaction.channel, group),
       sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🎉 **Group formed, Good luck!**`, undefined, { autoDelete: true }),
     ]);
   } else {
     await Promise.all([
-      followUpEphemeral(interaction, '✅ You joined the group!'),
+      followUpEphemeral(interaction, '✅ You joined the group!', { autoDelete: true }),
       sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🔔 <@${interaction.user.id}> joined the group!`, undefined, { autoDelete: true }),
     ]);
   }
@@ -680,7 +683,7 @@ async function handleLeaveButton(interaction, groupId) {
   const embed = buildGroupEmbed(group);
   const row = buildGroupRow(groupId);
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
-  await followUpEphemeral(interaction, 'You left the group.');
+  await followUpEphemeral(interaction, 'You left the group.', { autoDelete: true });
 
   const leftText = `${mentionAll(group)}\n⚠️ <@${interaction.user.id}> left the group.`;
 
@@ -770,7 +773,7 @@ async function handleStartNowButton(interaction, groupId) {
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
 
   await Promise.all([
-    followUpEphemeral(interaction, '✅ Started the group now!'),
+    followUpEphemeral(interaction, '✅ Started the group now!', { autoDelete: true }),
     renameThreadChannel(interaction.channel, group),
     sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🚀 **<@${interaction.user.id}> started this group now!**`),
   ]);

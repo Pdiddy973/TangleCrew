@@ -49,8 +49,20 @@ async function notifyAdminLog(client, title, description, fields = [], color = A
 function replyEphemeral(interaction, content) {
   return interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
-function followUpEphemeral(interaction, content) {
-  return interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+// autoDelete removes the follow-up again after MENU_MESSAGE_LIFETIME_MS — for one-off action
+// confirmations ("You joined the group!") that don't need to stick around once read.
+function followUpEphemeral(interaction, content, { autoDelete = false } = {}) {
+  const promise = interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+  if (autoDelete) {
+    promise.then((message) => {
+      setTimeout(() => {
+        message.delete().catch((err) => {
+          if (!isAlreadyGoneError(err)) console.error('Could not delete ephemeral follow-up:', err.message);
+        });
+      }, MENU_MESSAGE_LIFETIME_MS);
+    }).catch(() => {});
+  }
+  return promise;
 }
 
 // Reports an issue to admin log, then replies to the user with an ephemeral, ⚠️-prefixed message.
