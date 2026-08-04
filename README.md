@@ -115,8 +115,7 @@ Creates a post in a configured Forum Channel so members can find and join a grou
 **How it works:**
 1. Running the command opens a private, step-by-step menu: **Category** (Boss / Raid / Skilling-Minigame) → **Activity** → **Group Size** (auto-ranged to that activity's max — some activities also offer a "Mass" option) → **Start Time** (relative offsets like *Now*, *15 Min*, *1 Hour* — no timezone guesswork required).
 2. After the last selection, an optional **description** prompt appears.
-3. The bot creates a forum post pinging the matching role, with a live-updating title —
-   `[Open] - Category: Activity - Start: X - @creator - Members (Y/Z)` — and an embed with the full details.
+3. The bot creates a forum post pinging the matching role, titled `[Open] - Category: Activity - Start: X - @creator` — and an embed with the full details, including a live member list that updates on every join/leave.
 4. Anyone can **Join** or **Leave** from the post. Anyone can also **Close** it early (locks joining, pings the group) or **Disband** it (cancels immediately). A closed/full group can be **Reopened** if someone drops out.
 5. The post deletes itself automatically once its start time passes (15-minute minimum lifetime) or 5 minutes after the group closes/fills.
 

@@ -1,7 +1,5 @@
 const {
   ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   StringSelectMenuBuilder,
   ModalBuilder,
   TextInputBuilder,
@@ -33,15 +31,14 @@ const { ensureRoleExists, lfgRoleName } = require('./roleMenu');
 // Create a Forum Channel in your server, copy its ID, and set this in .env.
 const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
 
-// Separate in-memory state from the regular /lfg command, so both versions
-// can run side by side without interfering with each other. Lost on
-// restart/redeploy, same caveat as the regular version.
+// Separate in-memory state from the regular /lfg command, so both versions can run side by side without interfering with each other.
+// Lost on restart/redeploy, same caveat as the regular version.
 const setupSessions = new Map(); // userId -> { category, activity, size, time }
 const activeGroups = new Map(); // groupId -> group state
 
 // ---- Setup UI (accordion, identical shape to /lfg, different customId prefix) ----
-// No separate "Create" button. Once Start Time (the last dropdown) is
-// filled, this opens the description modal directly.
+// No separate "Create" button.
+// Once Start Time (the last dropdown) is filled, this opens the description modal directly.
 function getSession(userId) {
   if (!setupSessions.has(userId)) {
     setupSessions.set(userId, { category: null, activity: null, size: null, time: null });
@@ -158,8 +155,7 @@ async function handleSetupSelect(interaction, field) {
     const activityOption = findActivityOption(session.category, session.activity);
     const sizeChoices = buildSizeOptions(activityOption);
     if (sizeChoices.length === 1) {
-      // Only one possible size (e.g. Yama, max 2) — no real choice to make,
-      // so skip straight past this step instead of making them click it.
+      // Only one possible size (e.g. Yama, max 2) — no real choice to make, so skip straight past this step instead of making them click it.
       session.size = sizeChoices[0].value;
     }
   }
@@ -250,33 +246,41 @@ async function handleDescriptionModalSubmit(interaction) {
   const embed = buildGroupEmbed(group);
   const row = buildGroupRow(groupId, 'open', 'lfgforumgroup');
 
-  // Auto-apply a matching forum tag if one exists with the same name as the role
-  // (e.g. a tag literally called "Yama"). Entirely optional — skipped if none matches.
+  // Auto-apply a matching forum tag if one exists with the same name as the activity (e.g. "Yama" — the base name, not the "LFG-" prefixed role).
+  // Entirely optional — skipped if none matches.
   const matchingTag = forumChannel.availableTags?.find(
     (t) => t.name.toLowerCase() === activityOption.roleName.toLowerCase()
   );
 
-  // Description (if provided) leads the message content so it shows in the
-  // forum's post-list preview snippet, which pulls from the start of the
-  // message text. The role ping still fires a notification wherever it sits.
+  // Description (if provided) leads the message content so it shows in the forum's post-list preview snippet, which pulls from the start of the message text.
+  // The role ping still fires a notification wherever it sits.
   const startContent = description
     ? `**${description}**\n\n<@&${guildRole.id}>`
     : `<@&${guildRole.id}>`;
 
-  const thread = await forumChannel.threads.create({
-    name: buildThreadName(group, 'Open'),
-    appliedTags: matchingTag ? [matchingTag.id] : [],
-    message: {
-      content: startContent,
-      embeds: [embed],
-      components: [row],
-    },
-  });
+  let thread;
+  try {
+    thread = await forumChannel.threads.create({
+      name: buildThreadName(group, 'Open'),
+      appliedTags: matchingTag ? [matchingTag.id] : [],
+      message: {
+        content: startContent,
+        embeds: [embed],
+        components: [row],
+      },
+    });
+  } catch (err) {
+    activeGroups.delete(groupId);
+    console.error(`Could not create LFG forum post for group ${groupId}:`, err.message);
+    return interaction.reply({
+      content: '⚠️ Something went wrong creating the forum post. Please try again.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
 
   group.threadId = thread.id;
 
-  // Auto-delete once the chosen start time has passed, unless the group
-  // closes/fills/disbands sooner.
+  // Auto-delete once the chosen start time has passed, unless the group closes/fills/disbands sooner.
   scheduleForumGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
   setupSessions.delete(interaction.user.id);
 
@@ -288,15 +292,12 @@ async function handleDescriptionModalSubmit(interaction) {
   setTimeout(() => interaction.deleteReply().catch(() => {}), 30000);
 }
 
-// Builds the full thread title fresh from current group state, so it always
-// reflects the live member count (e.g. "Members (2/5)") rather than a
-// snapshot taken at creation time.
+// Only the status word changes here — member count lives in the embed instead (updates via message edit, not the channel rename rate limit).
+// Note: Discord thread/channel names are plain text only — this shows the creator's name for reference, but it can't be a real clickable @mention or trigger a notification the way an in-message mention does.
 function buildThreadName(group, statusWord) {
-  const capDisplay = group.sizeCap === Infinity ? 'Mass' : String(group.sizeCap);
-  // Note: Discord thread/channel names are plain text only — this shows the
-  // creator's name for reference, but it can't be a real clickable @mention
-  // or trigger a notification the way an in-message mention does.
-  return `[${statusWord}] - ${group.roleLabel} - Start: ${group.startLabel} - @${group.creatorTag} - Members (${group.members.size}/${capDisplay})`;
+  const name = `[${statusWord}] - ${group.roleLabel} - Start: ${group.startLabel} - @${group.creatorTag}`;
+  // Discord channel/thread names are capped at 100 characters.
+  return name.length > 100 ? `${name.slice(0, 99)}…` : name;
 }
 
 function statusWordFor(group) {
@@ -311,11 +312,23 @@ async function renameThread(interaction, group) {
   }
 }
 
-async function handleJoinButton(interaction, groupId) {
+function mentionAll(group) {
+  return [...group.members].map((id) => `<@${id}>`).join(' ');
+}
+
+// Looks up the group for a button interaction, replying "no longer exists" and returning null if it's gone.
+async function requireGroup(interaction, groupId) {
   const group = activeGroups.get(groupId);
   if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
+    return null;
   }
+  return group;
+}
+
+async function handleJoinButton(interaction, groupId) {
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (group.status === 'closed') {
     return interaction.reply({ content: '⚠️ This group is already full.', flags: MessageFlags.Ephemeral });
   }
@@ -334,23 +347,19 @@ async function handleJoinButton(interaction, groupId) {
 
   await interaction.update({ embeds: [embed], components: [row] });
   await interaction.followUp({ content: '✅ You joined the group!', flags: MessageFlags.Ephemeral });
-  await renameThread(interaction, group);
 
   if (justFilled) {
-    const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
-    await interaction.channel.send({ content: `${mentions}\n🎉 **Group formed, Good luck!**` });
+    await renameThread(interaction, group);
+    await interaction.channel.send({ content: `${mentionAll(group)}\n🎉 **Group formed, Good luck!**` });
     scheduleForumGroupCleanup(interaction.client, group, GROUP_FORMED_CLEANUP_DELAY_MS);
   } else {
-    const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
-    await interaction.channel.send({ content: `${mentions}\n🔔 <@${interaction.user.id}> joined the group!` });
+    await interaction.channel.send({ content: `${mentionAll(group)}\n🔔 <@${interaction.user.id}> joined the group!` });
   }
 }
 
 async function handleLeaveButton(interaction, groupId) {
-  const group = activeGroups.get(groupId);
-  if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
-  }
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (!group.members.has(interaction.user.id)) {
     return interaction.reply({ content: 'You\'re not in this group.', flags: MessageFlags.Ephemeral });
   }
@@ -360,19 +369,15 @@ async function handleLeaveButton(interaction, groupId) {
   const row = buildGroupRow(groupId, group.status, 'lfgforumgroup');
   await interaction.update({ embeds: [embed], components: [row] });
   await interaction.followUp({ content: 'You left the group.', flags: MessageFlags.Ephemeral });
-  await renameThread(interaction, group);
 
   if (group.members.size > 0) {
-    const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
-    await interaction.channel.send({ content: `${mentions}\n⚠️ <@${interaction.user.id}> left the group.` });
+    await interaction.channel.send({ content: `${mentionAll(group)}\n⚠️ <@${interaction.user.id}> left the group.` });
   }
 }
 
 async function handleCloseButton(interaction, groupId) {
-  const group = activeGroups.get(groupId);
-  if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
-  }
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (group.status !== 'open') {
     return interaction.reply({ content: '⚠️ This group is already closed.', flags: MessageFlags.Ephemeral });
   }
@@ -383,17 +388,14 @@ async function handleCloseButton(interaction, groupId) {
   await interaction.update({ embeds: [embed], components: [row] });
   await renameThread(interaction, group);
 
-  const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
-  await interaction.channel.send({ content: `${mentions}\n🎉 **Group formed, Good luck!**` });
+  await interaction.channel.send({ content: `${mentionAll(group)}\n🎉 **Group formed, Good luck!**` });
 
   scheduleForumGroupCleanup(interaction.client, group, GROUP_FORMED_CLEANUP_DELAY_MS);
 }
 
 async function handleReopenButton(interaction, groupId) {
-  const group = activeGroups.get(groupId);
-  if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
-  }
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (group.status !== 'closed') {
     return interaction.reply({ content: '⚠️ This group isn\'t currently closed.', flags: MessageFlags.Ephemeral });
   }
@@ -404,17 +406,14 @@ async function handleReopenButton(interaction, groupId) {
   await interaction.update({ embeds: [embed], components: [row] });
   await renameThread(interaction, group);
 
-  const mentions = [...group.members].map((id) => `<@${id}>`).join(' ');
-  await interaction.channel.send({ content: `${mentions}\n🔓 **This group has been reopened and is accepting new members again!**` });
+  await interaction.channel.send({ content: `${mentionAll(group)}\n🔓 **This group has been reopened and is accepting new members again!**` });
 
   scheduleForumGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
 }
 
 async function handleDisbandButton(interaction, groupId) {
-  const group = activeGroups.get(groupId);
-  if (!group) {
-    return interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
-  }
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
   if (group.status === 'disbanded') {
     return interaction.reply({ content: '⚠️ This group is already disbanded.', flags: MessageFlags.Ephemeral });
   }
