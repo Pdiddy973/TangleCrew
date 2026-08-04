@@ -21,31 +21,46 @@ const {
   resolveTimeEpoch,
   buildGroupEmbed,
   buildGroupRow,
+  buildQueueOfferRow,
+  buildCancelDisbandRow,
   makeGroupId,
   resolveGroupColor,
-  GROUP_FORMED_CLEANUP_DELAY_MS,
-  computeStartTimeCleanupDelay,
+  isGroupFull,
+  describeStartCountdown,
+  computeCountdownRefreshDelay,
 } = require('./lfgGroup');
 const {
   ensureRoleExists,
   lfgRoleName,
   notifyAdminLog,
   scheduleReplyCleanup,
+  isAlreadyGoneError,
   replyEphemeral,
   followUpEphemeral,
   isValidColor,
   isValidEmoji,
+  emojiMarkup,
 } = require('./roleMenu');
 
 // The Discord Forum Channel where /lfg-post posts get created as threads.
 // Create a Forum Channel in your server, copy its ID, and set this in .env.
 const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
 
-// If everyone leaves and the post sits empty this long, auto-delete it instead of waiting for the start time.
+// The only two ways a post auto-closes: sitting empty this long (nobody left in it — see
+// schedulePostGroupCleanup's callers), or an explicit disband finishing its grace period
+// (DISBAND_DELAY_MS below). A non-empty group otherwise stays up regardless of its start time.
 const EMPTY_GROUP_CLEANUP_DELAY_MS = 30 * 60 * 1000;
 
 // How long the "✅ post created" confirmation stays up before auto-deleting.
 const POST_CREATED_MESSAGE_LIFETIME_MS = 30 * 1000;
+
+// How long someone offered a freed spot has to Accept/Decline before it auto-skips to the next
+// person in the queue.
+const QUEUE_OFFER_TIMEOUT_MS = 1 * 60 * 1000;
+
+// Grace period between clicking Disband and the post actually closing, so a mis-click (or a
+// change of heart) can still be caught via Cancel Disband.
+const DISBAND_DELAY_MS = 60 * 1000;
 
 // In-memory state, lost on restart/redeploy — fine for same-day LFG posts, but worth knowing if the bot redeploys mid-activity.
 const setupSessions = new Map(); // userId -> { category, activity, size, time }
@@ -140,7 +155,9 @@ function buildSetupContent(session) {
 }
 
 async function sendSetupMenu(interaction) {
+  console.log(`[LFG] /lfg-post invoked by ${interaction.user.username}`);
   if (!FORUM_CHANNEL_ID) {
+    console.log('[LFG] /lfg-post aborted: LFG_FORUM_CHANNEL_ID is not set');
     return replyEphemeral(interaction, '⚠️ LFG_FORUM_CHANNEL_ID is not set. Ask an admin to set it in the bot\'s environment variables.');
   }
 
@@ -150,9 +167,11 @@ async function sendSetupMenu(interaction) {
     components: buildSetupComponents(session),
     flags: MessageFlags.Ephemeral,
   });
+  console.log(`[LFG] Setup menu sent to ${interaction.user.username}`);
 }
 
 async function handleSetupSelect(interaction, field) {
+  console.log(`[LFG] Setup select "${field}" = "${interaction.values[0]}" by ${interaction.user.username}`);
   const session = getSession(interaction.user.id);
   session[field] = interaction.values[0];
 
@@ -211,6 +230,7 @@ async function abortWithAdminAlert(interaction, title, adminMessage, userMessage
 
 // ---- Modal submit actually creates the LFG post ----
 async function handleDescriptionModalSubmit(interaction) {
+  console.log(`[LFG] Description modal submitted by ${interaction.user.username} — creating post`);
   const session = getSession(interaction.user.id);
   if (!session.category || !session.activity || !session.size || !session.time) {
     return interaction.update({
@@ -266,7 +286,6 @@ async function handleDescriptionModalSubmit(interaction) {
     roleLabel,
     color: activityOption.color,
     emoji: activityOption.emoji,
-    startLabel: timeOption.label,
     timeEpoch,
     sizeLabel: sizeOption.label,
     sizeCap,
@@ -276,11 +295,15 @@ async function handleDescriptionModalSubmit(interaction) {
     threadId: null,
     activityMessageId: null,
     cleanupTimeoutId: null,
+    countdownTimeoutId: null,
+    queue: [], // FIFO of userIds waiting for a freed spot — see advanceQueueOrReopen
+    pendingOfferUserId: null,
+    pendingOfferTimeoutId: null,
   };
   activeGroups.set(groupId, group);
 
   const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, 'open');
+  const row = buildGroupRow(groupId);
 
   // Auto-apply a matching forum tag if one exists with the same name as the activity (e.g. "Yama" — the base name, not the "LFG-" prefixed role).
   // Entirely optional — skipped if none matches.
@@ -288,8 +311,9 @@ async function handleDescriptionModalSubmit(interaction) {
     (t) => t.name.toLowerCase() === activityOption.label.toLowerCase()
   );
 
-  // The description only shows in the embed (see buildGroupEmbed) — the message content is just the role ping.
-  const startContent = `<@&${guildRole.id}>`;
+  // The description only shows in the embed (see buildGroupEmbed) — the message content leads
+  // with the activity's emoji, then the role ping.
+  const startContent = [emojiMarkup(group.emoji), `<@&${guildRole.id}>`].filter(Boolean).join(' ');
 
   let thread;
   try {
@@ -314,9 +338,19 @@ async function handleDescriptionModalSubmit(interaction) {
   }
 
   group.threadId = thread.id;
+  console.log(`[LFG] Post created: group ${groupId}, thread ${thread.id}, by ${interaction.user.username}`);
 
-  // Auto-delete once the chosen start time has passed, unless the group closes/fills/disbands sooner.
-  schedulePostGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
+  // Best-effort — a reaction failing (e.g. the bot losing Add Reactions permission) shouldn't block the post existing.
+  try {
+    const starterMessage = await thread.fetchStarterMessage();
+    await starterMessage.react(group.emoji);
+  } catch (err) {
+    console.error(`Could not react to LFG post ${groupId} with its activity emoji:`, err.message);
+  }
+
+  // No cleanup timer yet — the group starts with a member (the creator), and a non-empty group
+  // only closes via an explicit disband, never on its own (see EMPTY_GROUP_CLEANUP_DELAY_MS).
+  scheduleCountdownRefresh(interaction.client, group);
   setupSessions.delete(interaction.user.id);
 
   const threadLink = `https://discord.com/channels/${interaction.guildId}/${thread.id}`;
@@ -327,10 +361,11 @@ async function handleDescriptionModalSubmit(interaction) {
   scheduleReplyCleanup(interaction, POST_CREATED_MESSAGE_LIFETIME_MS, '/lfg-post confirmation message');
 }
 
-// Only the status word changes here — member count lives in the embed instead (updates via message edit, not the channel rename rate limit).
+// Only the status word and start countdown change here — member count lives in the embed instead
+// (updates via message edit, not the channel rename rate limit).
 // The creator isn't included here (it's in the embed footer instead) to keep the title short — Discord thread/channel names are capped at 100 characters.
 function buildThreadName(group, statusWord) {
-  const name = `[${statusWord}] - ${group.roleLabel} - Start: ${group.startLabel}`;
+  const name = `[${statusWord}] - ${group.roleLabel} - Start: ${describeStartCountdown(group.timeEpoch)}`;
   return name.length > 100 ? `${name.slice(0, 99)}…` : name;
 }
 
@@ -338,11 +373,57 @@ function statusWordFor(group) {
   return group.status === 'closed' ? 'Full' : 'Open';
 }
 
-async function renameThread(interaction, group) {
+// Takes a channel directly (rather than an interaction) so it also works from contexts with no
+// interaction to hand — e.g. the queue-offer timeout firing on its own.
+async function renameThreadChannel(channel, group) {
   try {
-    await interaction.channel.setName(buildThreadName(group, statusWordFor(group)));
+    await channel.setName(buildThreadName(group, statusWordFor(group)));
   } catch (err) {
     console.error(`Could not rename LFG post thread ${group.id}:`, err.message);
+  }
+}
+
+async function renameThread(interaction, group) {
+  return renameThreadChannel(interaction.channel, group);
+}
+
+// Re-renders the main group post (embed + Join/Leave/Start Now/Disband row) by editing its
+// starter message directly, for flows with no interaction of their own to call .update() on —
+// the queue-offer buttons live on a separate activity message (see sendOrEditActivity), and the
+// timeout-triggered skip has no interaction at all.
+async function updateMainPost(channel, group) {
+  try {
+    const starterMessage = await channel.fetchStarterMessage();
+    await starterMessage.edit({ embeds: [buildGroupEmbed(group)], components: [buildGroupRow(group.id)] });
+  } catch (err) {
+    if (!isAlreadyGoneError(err)) console.error(`Could not update LFG post ${group.id}:`, err.message);
+  }
+}
+
+// Re-renames the thread title as the "Start: in X" countdown bucket ticks down (see
+// describeStartCountdown/computeCountdownRefreshDelay in lfgGroup.js), so people can see roughly
+// when a post starts without opening it. Self-reschedules until the start time passes or the
+// group closes/disbands (stopCountdownRefresh), at which point the title stops changing on its own.
+function scheduleCountdownRefresh(client, group) {
+  if (group.countdownTimeoutId) clearTimeout(group.countdownTimeoutId);
+  const delay = computeCountdownRefreshDelay(group.timeEpoch);
+  if (delay === null) return;
+
+  group.countdownTimeoutId = setTimeout(async () => {
+    try {
+      const thread = await client.channels.fetch(group.threadId);
+      await thread.setName(buildThreadName(group, statusWordFor(group)));
+    } catch (err) {
+      if (!isAlreadyGoneError(err)) console.error(`Could not refresh LFG post countdown ${group.id}:`, err.message);
+    }
+    scheduleCountdownRefresh(client, group);
+  }, delay);
+}
+
+function stopCountdownRefresh(group) {
+  if (group.countdownTimeoutId) {
+    clearTimeout(group.countdownTimeoutId);
+    group.countdownTimeoutId = null;
   }
 }
 
@@ -350,43 +431,118 @@ function mentionAll(group) {
   return [...group.members].map((id) => `<@${id}>`).join(' ');
 }
 
-// Join/leave/formed/reopened notices all share one message per group, edited in place instead of piling up as a new message every time something happens.
-async function sendOrEditActivity(channel, group, text) {
+// Join/leave/formed/reopened/queue notices all share one message per group, edited in place
+// instead of piling up as a new message every time something happens. components defaults to
+// none, which also doubles as clearing a queue offer's Accept/Decline buttons once it's resolved.
+async function sendOrEditActivity(channel, group, text, components = []) {
   const embed = new EmbedBuilder().setDescription(text).setColor(resolveGroupColor(group)).setTimestamp();
+  const payload = { embeds: [embed], components };
 
   if (group.activityMessageId) {
     try {
       const existing = await channel.messages.fetch(group.activityMessageId);
-      await existing.edit({ embeds: [embed] });
+      await existing.edit(payload);
       return;
     } catch (err) {
       // Message is gone (e.g. manually deleted) — fall through and send a fresh one.
     }
   }
 
-  const sent = await channel.send({ embeds: [embed] });
+  const sent = await channel.send(payload);
   group.activityMessageId = sent.id;
 }
 
-// Looks up the group for a button interaction, replying "no longer exists" and returning null if it's gone.
+// Looks up the group for a button interaction, replying "no longer exists" and returning null if
+// it's gone — or already disbanding, since nothing else should be actionable during that grace
+// period (see handleDisbandButton/handleCancelDisbandButton, which look the group up directly
+// instead of through here so they can give a more specific reply).
 async function requireGroup(interaction, groupId) {
   const group = activeGroups.get(groupId);
-  if (!group) {
+  if (!group || group.status === 'disbanded') {
     await replyEphemeral(interaction, '⚠️ This group no longer exists.');
     return null;
   }
   return group;
 }
 
-// True for Discord's "Unknown Message" error — thrown when the post's message/thread was already deleted (auto-cleanup fired, manually removed, etc.) before a pending button click got processed.
-function isUnknownMessageError(err) {
-  return err?.code === 10008;
+// Clears any in-flight queue offer without starting a new one — used whenever the group's state
+// changes in a way that invalidates it (someone accepted/declined, the group's being torn down,
+// or disbanding started), so a stale pendingOfferUserId doesn't linger and misreport who the
+// embed's "🎟️ (offer pending)" marker points at.
+function clearPendingOffer(group) {
+  if (group.pendingOfferTimeoutId) clearTimeout(group.pendingOfferTimeoutId);
+  group.pendingOfferTimeoutId = null;
+  group.pendingOfferUserId = null;
+}
+
+// Common teardown for a group that's going away for good (expired, disbanded, or the underlying
+// post vanished) — everything cleanupStaleGroup and schedulePostGroupCleanup's own expiry both need.
+function tearDownGroup(group) {
+  clearPendingOffer(group);
+  stopCountdownRefresh(group);
+  activeGroups.delete(group.id);
 }
 
 // The underlying post is gone — drop the now-stale in-memory group instead of leaking it forever (every future click on the dead button would otherwise keep hitting the same error).
 function cleanupStaleGroup(group) {
   if (group.cleanupTimeoutId) clearTimeout(group.cleanupTimeoutId);
-  activeGroups.delete(group.id);
+  tearDownGroup(group);
+}
+
+// Decides what happens to a spot that just freed up (someone left, declined, or timed out):
+// if anyone's queued, hold it for whoever's been waiting longest and start their offer clock
+// (QUEUE_OFFER_TIMEOUT_MS); otherwise reopen the group to the public Join button. Always
+// re-renders the main post (queue count or status changed) and the activity notice —
+// precedingText, if given, is prepended to it so e.g. "X left the group" and "the spot is now
+// offered to Y" land as one edit, not two.
+async function advanceQueueOrReopen(client, channel, group, precedingText = '') {
+  clearPendingOffer(group);
+
+  if (group.queue.length === 0) {
+    group.status = 'open';
+    await renameThreadChannel(channel, group);
+    scheduleCountdownRefresh(client, group);
+    refreshCleanupSchedule(client, group);
+    await updateMainPost(channel, group);
+    const text = [precedingText, '🔓 **This group has space again and is accepting new members!**'].filter(Boolean).join('\n\n');
+    await sendOrEditActivity(channel, group, text);
+    return;
+  }
+
+  const nextUserId = group.queue[0];
+  group.pendingOfferUserId = nextUserId;
+  await updateMainPost(channel, group);
+  // <t:...:R> is a live, auto-localizing Discord timestamp (same trick as the embed's Start
+  // field) — it counts down on its own client-side instead of needing a re-edit every second.
+  const offerExpiresEpoch = Math.floor((Date.now() + QUEUE_OFFER_TIMEOUT_MS) / 1000);
+  const text = [
+    precedingText,
+    `<@${nextUserId}> 🎟️ **A spot opened up!** Accept <t:${offerExpiresEpoch}:R> or it goes to the next person in the queue.`,
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  await sendOrEditActivity(channel, group, text, [buildQueueOfferRow(group.id)]);
+  group.pendingOfferTimeoutId = setTimeout(() => handleQueueOfferTimeout(client, group), QUEUE_OFFER_TIMEOUT_MS);
+}
+
+// Nobody responded to the offer in time. Unlike an explicit Decline, being late isn't an opt-out
+// — cycle them to the back of the queue (same array, no removal) instead of dropping them, so
+// they naturally get offered again once their turn comes back around and there's no separate
+// "rejoin" button to build or click. Has no interaction to work with (it fired on its own), so it
+// fetches the thread directly.
+async function handleQueueOfferTimeout(client, group) {
+  if (!activeGroups.has(group.id) || group.pendingOfferUserId === null) return;
+  const skippedUserId = group.queue.shift();
+  group.queue.push(skippedUserId);
+  group.pendingOfferUserId = null;
+  group.pendingOfferTimeoutId = null;
+
+  try {
+    const channel = await client.channels.fetch(group.threadId);
+    await advanceQueueOrReopen(client, channel, group, `⌛ <@${skippedUserId}> didn't respond in time and was moved to the back of the queue.`);
+  } catch (err) {
+    if (!isAlreadyGoneError(err)) console.error(`Could not advance LFG queue for group ${group.id}:`, err.message);
+  }
 }
 
 // Updates the group's post with a fresh embed/row, cleaning up and replying if the post is already gone.
@@ -396,123 +552,260 @@ async function updateGroupMessage(interaction, group, embed, row) {
     await interaction.update({ embeds: [embed], components: [row] });
     return true;
   } catch (err) {
-    if (!isUnknownMessageError(err)) throw err;
+    if (!isAlreadyGoneError(err)) throw err;
     cleanupStaleGroup(group);
     await replyEphemeral(interaction, '⚠️ This group\'s post no longer exists.').catch(() => {});
     return false;
   }
 }
 
-// Disbanding is limited to current members of the group, or Coordinator/Owner staff.
-function canDisbandGroup(interaction, group) {
-  if (group.members.has(interaction.user.id)) return true;
+function isStaff(interaction) {
   const staffRoleIds = [process.env.COORDINATOR_ROLE_ID, process.env.OWNER_ROLE_ID].filter(Boolean);
   return staffRoleIds.some((roleId) => interaction.member.roles.cache.has(roleId));
 }
 
+// Disbanding and starting early are both limited to current members of the group, or Coordinator/Owner staff.
+function canManageGroup(interaction, group) {
+  return group.members.has(interaction.user.id) || isStaff(interaction);
+}
+
+// Cancelling an in-progress disband is a lower bar — anyone with a stake in the group getting
+// this far (a member, or someone still queued for a spot) can call it off, not just staff.
+function canCancelDisband(interaction, group) {
+  return group.members.has(interaction.user.id) || group.queue.includes(interaction.user.id) || isStaff(interaction);
+}
+
 async function handleJoinButton(interaction, groupId) {
+  console.log(`[LFG] Join clicked: group ${groupId} by ${interaction.user.username}`);
   const group = await requireGroup(interaction, groupId);
   if (!group) return;
-  if (group.status === 'closed') {
-    return replyEphemeral(interaction, '⚠️ This group is already full.');
-  }
   if (group.members.has(interaction.user.id)) {
     return replyEphemeral(interaction, 'You\'re already in this group.');
   }
+  const queuePosition = group.queue.indexOf(interaction.user.id);
+  if (queuePosition !== -1) {
+    return replyEphemeral(interaction, `⏳ You're already in the queue (position ${queuePosition + 1}).`);
+  }
+
+  if (group.status === 'closed') {
+    group.queue.push(interaction.user.id);
+    const embed = buildGroupEmbed(group);
+    const row = buildGroupRow(groupId);
+    if (!(await updateGroupMessage(interaction, group, embed, row))) return;
+    return followUpEphemeral(
+      interaction,
+      `⏳ This group is full — you're in the queue (position ${group.queue.length}). You'll be pinged here if a spot opens up.`
+    );
+  }
 
   group.members.add(interaction.user.id);
+  // Not empty anymore either way (whether this fills it or not) — drop any empty-group cleanup countdown.
+  cancelScheduledCleanup(group);
   const justFilled = group.sizeCap !== Infinity && group.members.size >= group.sizeCap;
   if (justFilled) {
     group.status = 'closed';
   }
 
   const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, group.status);
+  const row = buildGroupRow(groupId);
 
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
   await followUpEphemeral(interaction, '✅ You joined the group!');
 
   if (justFilled) {
+    // Full — the title stops needing a countdown until (if ever) someone leaves and reopens it.
+    stopCountdownRefresh(group);
     await renameThread(interaction, group);
     await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🎉 **Group formed, Good luck!**`);
-    schedulePostGroupCleanup(interaction.client, group, GROUP_FORMED_CLEANUP_DELAY_MS);
   } else {
-    if (group.members.size === 1) {
-      // Group was empty and just got someone back — cancel the empty-group cleanup, back to the normal start-time schedule.
-      schedulePostGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
-    }
     await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🔔 <@${interaction.user.id}> joined the group!`);
   }
 }
 
 async function handleLeaveButton(interaction, groupId) {
+  console.log(`[LFG] Leave clicked: group ${groupId} by ${interaction.user.username}`);
   const group = await requireGroup(interaction, groupId);
   if (!group) return;
+
   if (!group.members.has(interaction.user.id)) {
-    return replyEphemeral(interaction, 'You\'re not in this group.');
+    const queueIndex = group.queue.indexOf(interaction.user.id);
+    if (queueIndex === -1) {
+      return replyEphemeral(interaction, 'You\'re not in this group.');
+    }
+    group.queue.splice(queueIndex, 1);
+    const embed = buildGroupEmbed(group);
+    const row = buildGroupRow(groupId);
+    if (!(await updateGroupMessage(interaction, group, embed, row))) return;
+    return followUpEphemeral(interaction, 'You left the queue.');
   }
 
   group.members.delete(interaction.user.id);
-
-  // A full group always has room again the moment someone leaves it — reopen automatically instead of waiting for a manual Reopen click.
-  const reopened = group.status === 'closed';
-  if (reopened) {
-    group.status = 'open';
-  }
+  const wasFull = group.status === 'closed';
 
   const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, group.status);
+  const row = buildGroupRow(groupId);
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
   await followUpEphemeral(interaction, 'You left the group.');
 
-  if (reopened) {
-    await renameThread(interaction, group);
+  const leftText = `${mentionAll(group)}\n⚠️ <@${interaction.user.id}> left the group.`;
+
+  if (wasFull) {
+    // A full group doesn't just reopen the instant a spot frees — if anyone's queued, they get
+    // first refusal (see advanceQueueOrReopen); only reopens to the public Join button once the
+    // queue's empty.
+    await advanceQueueOrReopen(interaction.client, interaction.channel, group, leftText);
+    return;
   }
 
   if (group.members.size > 0) {
-    const lines = [mentionAll(group), `⚠️ <@${interaction.user.id}> left the group.`];
-    if (reopened) lines.push('🔓 **This group has space again and is accepting new members!**');
-    await sendOrEditActivity(interaction.channel, group, lines.join('\n'));
-    if (reopened) {
-      schedulePostGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
-    }
+    await sendOrEditActivity(interaction.channel, group, leftText);
   } else {
-    // Nobody left in the group — no point keeping the post up for the full start-time window.
+    // Nobody left in the group — starts the 30-minute empty-group countdown.
     schedulePostGroupCleanup(interaction.client, group, EMPTY_GROUP_CLEANUP_DELAY_MS);
   }
 }
 
-async function handleDisbandButton(interaction, groupId) {
+// Only the person currently holding the offer (front of the queue array, see advanceQueueOrReopen)
+// can Accept/Decline it. Clicking Accept/Decline late (after a timeout already cycled it to the
+// next person) isn't an error though — handleQueueOfferTimeout already moved them to the back of
+// the queue, so this just confirms that rather than showing a dead-end rejection.
+function requirePendingOffer(interaction, group) {
+  if (group.pendingOfferUserId === interaction.user.id) return true;
+
+  if (group.queue.includes(interaction.user.id)) {
+    replyEphemeral(interaction, `⏳ That offer's moved on, but you're still queued (position ${group.queue.indexOf(interaction.user.id) + 1}).`);
+  } else {
+    replyEphemeral(interaction, '⚠️ This offer isn\'t for you.');
+  }
+  return false;
+}
+
+async function handleQueueAcceptButton(interaction, groupId) {
+  console.log(`[LFG] Accept Spot clicked: group ${groupId} by ${interaction.user.username}`);
   const group = await requireGroup(interaction, groupId);
   if (!group) return;
-  if (!canDisbandGroup(interaction, group)) {
+  if (!requirePendingOffer(interaction, group)) return;
+
+  await interaction.deferUpdate();
+
+  clearPendingOffer(group);
+  group.queue.shift();
+  group.members.add(interaction.user.id);
+  group.status = group.sizeCap !== Infinity && group.members.size >= group.sizeCap ? 'closed' : 'open';
+
+  await updateMainPost(interaction.channel, group);
+  await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n✅ <@${interaction.user.id}> accepted the open spot and joined!`);
+
+  if (group.status === 'open') {
+    // Capacity allows for more than this one accept covered — keep serving the queue (or reopen if it's now empty).
+    await advanceQueueOrReopen(interaction.client, interaction.channel, group);
+  }
+}
+
+async function handleQueueDeclineButton(interaction, groupId) {
+  console.log(`[LFG] Decline Spot clicked: group ${groupId} by ${interaction.user.username}`);
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
+  if (!requirePendingOffer(interaction, group)) return;
+
+  await interaction.deferUpdate();
+
+  clearPendingOffer(group);
+  const declinedUserId = group.queue.shift();
+
+  await advanceQueueOrReopen(interaction.client, interaction.channel, group, `↪️ <@${declinedUserId}> declined the spot.`);
+}
+
+async function handleStartNowButton(interaction, groupId) {
+  console.log(`[LFG] Start Now clicked: group ${groupId} by ${interaction.user.username}`);
+  const group = await requireGroup(interaction, groupId);
+  if (!group) return;
+  if (!canManageGroup(interaction, group)) {
+    return replyEphemeral(interaction, '⚠️ Only members of this group, or a Coordinator or higher, can start it early.');
+  }
+  if (group.timeEpoch * 1000 <= Date.now()) {
+    return replyEphemeral(interaction, '⚠️ This group has already started.');
+  }
+
+  group.timeEpoch = Math.floor(Date.now() / 1000);
+  stopCountdownRefresh(group);
+
+  const embed = buildGroupEmbed(group);
+  const row = buildGroupRow(groupId);
+  if (!(await updateGroupMessage(interaction, group, embed, row))) return;
+  await followUpEphemeral(interaction, '✅ Started the group now!');
+
+  await renameThread(interaction, group);
+  await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🚀 **<@${interaction.user.id}> started this group now!**`);
+}
+
+// Looks the group up directly rather than via requireGroup, since requireGroup treats an
+// already-disbanded group as gone — here that's a distinct, more useful reply ("already
+// disbanding, here's how to cancel it") rather than a generic "no longer exists".
+async function handleDisbandButton(interaction, groupId) {
+  console.log(`[LFG] Disband clicked: group ${groupId} by ${interaction.user.username}`);
+  const group = activeGroups.get(groupId);
+  if (!group) {
+    return replyEphemeral(interaction, '⚠️ This group no longer exists.');
+  }
+  if (!canManageGroup(interaction, group)) {
     return replyEphemeral(interaction, '⚠️ Only members of this group, or a Coordinator or higher, can disband it.');
   }
   if (group.status === 'disbanded') {
-    return replyEphemeral(interaction, '⚠️ This group is already disbanded.');
+    return replyEphemeral(interaction, '⚠️ This group is already disbanding — anyone in it (or its queue), or a Coordinator or higher, can cancel that with **Cancel Disband**.');
   }
 
   group.status = 'disbanded';
-  if (group.cleanupTimeoutId) {
-    clearTimeout(group.cleanupTimeoutId);
-  }
+  // Also drops pendingOfferUserId, not just its timer — otherwise a Cancel Disband later would
+  // reopen the group with the embed still marking a stale offer as "pending" for no one in particular.
+  clearPendingOffer(group);
+  stopCountdownRefresh(group);
 
+  // Nothing else is actionable on the main post once disbanding starts — clear its row.
   try {
-    await interaction.deferUpdate();
+    await interaction.update({ embeds: [buildGroupEmbed(group)], components: [] });
   } catch (err) {
-    if (!isUnknownMessageError(err)) throw err;
+    if (!isAlreadyGoneError(err)) throw err;
     cleanupStaleGroup(group);
     return;
   }
 
-  try {
-    const thread = await interaction.client.channels.fetch(group.threadId);
-    await thread.delete();
-  } catch (err) {
-    console.error(`Could not delete disbanded LFG post ${group.id}:`, err.message);
+  await sendOrEditActivity(
+    interaction.channel,
+    group,
+    `${mentionAll(group)}\n🛑 <@${interaction.user.id}> has selected to disband this group. It will close in 1 minute.`,
+    [buildCancelDisbandRow(group.id)]
+  );
+
+  // Reuses the normal expiry timer (see schedulePostGroupCleanup) rather than a bespoke one — it
+  // already does exactly what's needed here: delete the thread and drop the group after a delay.
+  schedulePostGroupCleanup(interaction.client, group, DISBAND_DELAY_MS);
+}
+
+// Cancelling looks the group up directly (not via requireGroup) for the same reason disbanding
+// does — a disbanded group is exactly the case this handles, not one to reject as "gone".
+async function handleCancelDisbandButton(interaction, groupId) {
+  console.log(`[LFG] Cancel Disband clicked: group ${groupId} by ${interaction.user.username}`);
+  const group = activeGroups.get(groupId);
+  if (!group) {
+    return replyEphemeral(interaction, '⚠️ This group has already closed.');
+  }
+  if (group.status !== 'disbanded') {
+    return replyEphemeral(interaction, '⚠️ This group isn\'t disbanding.');
+  }
+  if (!canCancelDisband(interaction, group)) {
+    return replyEphemeral(interaction, '⚠️ Only members of this group, someone in its queue, or a Coordinator or higher, can cancel this.');
   }
 
-  activeGroups.delete(groupId);
+  await interaction.deferUpdate();
+
+  group.status = isGroupFull(group) ? 'closed' : 'open';
+
+  await renameThreadChannel(interaction.channel, group);
+  if (group.status === 'open') scheduleCountdownRefresh(interaction.client, group);
+  refreshCleanupSchedule(interaction.client, group);
+  await updateMainPost(interaction.channel, group);
+  await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n✅ <@${interaction.user.id}> cancelled the disband — this group is staying open!`);
 }
 
 function schedulePostGroupCleanup(client, group, delayMs) {
@@ -525,10 +818,31 @@ function schedulePostGroupCleanup(client, group, delayMs) {
       const thread = await client.channels.fetch(group.threadId);
       await thread.delete(); // deletes the entire post, no need to remove messages individually
     } catch (err) {
-      console.error(`Could not delete expired LFG post ${group.id}:`, err.message);
+      if (!isAlreadyGoneError(err)) console.error(`Could not delete expired LFG post ${group.id}:`, err.message);
     }
-    activeGroups.delete(group.id);
+    tearDownGroup(group);
   }, delayMs);
+}
+
+// Cancels a pending cleanup without scheduling a new one — for the moment a group stops being
+// empty (a join, an accept, a cancelled disband) and there's nothing that should still be
+// counting down.
+function cancelScheduledCleanup(group) {
+  if (group.cleanupTimeoutId) {
+    clearTimeout(group.cleanupTimeoutId);
+    group.cleanupTimeoutId = null;
+  }
+}
+
+// A non-empty group has nothing counting down (see EMPTY_GROUP_CLEANUP_DELAY_MS's comment); an
+// empty one gets the 30-minute grace period. Used wherever membership just changed and the
+// cleanup schedule needs to catch up with it.
+function refreshCleanupSchedule(client, group) {
+  if (group.members.size > 0) {
+    cancelScheduledCleanup(group);
+  } else {
+    schedulePostGroupCleanup(client, group, EMPTY_GROUP_CLEANUP_DELAY_MS);
+  }
 }
 
 // ---- Entry points called from eventHandler.js ----
@@ -548,7 +862,11 @@ async function handleLfgPostGroupButtonInteraction(interaction) {
   const [, action, groupId] = interaction.customId.split(':'); // "lfgpostgroup:<action>:<groupId>"
   if (action === 'join') return handleJoinButton(interaction, groupId);
   if (action === 'leave') return handleLeaveButton(interaction, groupId);
+  if (action === 'queueaccept') return handleQueueAcceptButton(interaction, groupId);
+  if (action === 'queuedecline') return handleQueueDeclineButton(interaction, groupId);
+  if (action === 'startnow') return handleStartNowButton(interaction, groupId);
   if (action === 'disband') return handleDisbandButton(interaction, groupId);
+  if (action === 'canceldisband') return handleCancelDisbandButton(interaction, groupId);
 }
 
 module.exports = {

@@ -61,11 +61,21 @@ async function notifyAdminLogAndReply(interaction, title, adminMessage, userMess
   return replyEphemeral(interaction, userMessage);
 }
 
-// Deletes interaction's reply after delayMs, logging (rather than throwing) if it's already gone
-// — e.g. the user dismissed it, or it was already cleaned up some other way.
+// Discord's "Unknown Message" (10008) and "Unknown Channel" (10003) — thrown when the message
+// or thread/channel was already gone (user dismissed it, auto-cleanup already fired, manually
+// deleted, etc.) before this call got to it. Covers both since callers delete/rename/update
+// either a reply message or a forum thread depending on which cleanup path hit them.
+const ALREADY_GONE_ERROR_CODES = new Set([10003, 10008]);
+function isAlreadyGoneError(err) {
+  return ALREADY_GONE_ERROR_CODES.has(err?.code);
+}
+
+// Deletes interaction's reply after delayMs. An already-gone reply is expected (the user
+// dismissed it, or another cleanup already deleted it) and isn't logged; anything else is a real error.
 function scheduleReplyCleanup(interaction, delayMs, logLabel) {
   setTimeout(() => {
     interaction.deleteReply().catch((err) => {
+      if (isAlreadyGoneError(err)) return;
       console.error(`Could not delete ${logLabel}:`, err.message);
     });
   }, delayMs);
@@ -390,10 +400,10 @@ function isValidEmoji(emoji) {
   return isSnowflakeEmoji(emoji) || /[^\x00-\x7F]/.test(emoji);
 }
 
-// Discord's own emoji picker (and pasting a copied emoji) inserts the full <:name:ID> /
-// <a:name:ID> markup into a text field, not the bare ID CATEGORIES expects — this pulls the
-// ID back out so a suggester can just use the picker instead of digging up the ID by hand.
-// Anything else (a bare ID, a plain unicode character, garbage) passes through untouched.
+// Pasting a copied custom emoji carries the full <:name:ID> / <a:name:ID> markup as text, not
+// the bare ID CATEGORIES expects — this pulls the ID back out so a suggester can just paste
+// instead of digging up the ID by hand. Anything else (a bare ID, a plain unicode character,
+// garbage) passes through untouched. Modal text fields have no emoji-picker button of their own.
 function normalizeEmojiInput(text) {
   const trimmed = (text ?? '').trim();
   const customEmojiMatch = trimmed.match(/^<a?:\w+:(\d{15,25})>$/);
@@ -434,6 +444,7 @@ module.exports = {
   notifyAdminLog,
   notifyAdminLogAndReply,
   scheduleReplyCleanup,
+  isAlreadyGoneError,
   replyEphemeral,
   followUpEphemeral,
   emojiMarkup,

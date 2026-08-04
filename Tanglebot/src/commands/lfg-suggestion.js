@@ -7,13 +7,19 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('lfg-suggestion')
     .setDescription('Suggest a new LFG activity or changes to an existing one')
-    .addSubcommand((sub) => sub.setName('new').setDescription('Suggest a brand new activity (boss/raid/minigame)'))
-    .addSubcommand((sub) =>
-      sub.setName('edit').setDescription('Suggest changes to an existing activity (size, color, emoji, name)')
+    .addStringOption((opt) =>
+      opt
+        .setName('type')
+        .setDescription('Suggest a brand new activity, or changes to an existing one?')
+        .setRequired(true)
+        .addChoices(
+          { name: 'New Activity', value: 'new' },
+          { name: 'Edit Existing Activity', value: 'edit' }
+        )
     ),
 
   async execute(interaction) {
-    const mode = interaction.options.getSubcommand(); // 'new' | 'edit'
+    const mode = interaction.options.getString('type'); // 'new' | 'edit'
     await sendCategoryPicker(interaction, mode);
   },
 };

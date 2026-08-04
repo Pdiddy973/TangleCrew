@@ -53,13 +53,15 @@ function parseSuggestedSize(text) {
   return { code: hasMass ? `sizeRangeWithMass(${max})` : `sizeRange(${max})` };
 }
 
-// Falls back to a commented placeholder (rather than throwing) when the suggester's size text
-// couldn't be parsed, so the admin embed still shows *something* copy-pasteable to fix by hand.
+// Falls back to a placeholder (rather than throwing) when the suggester's size text isn't a
+// parseable number — e.g. a typo like "olmpet". Matches PUT_EMOJI_ID_HERE's approach: a valid,
+// copy-pasteable placeholder with the original text kept alongside it, not a bare `sizeRange(?)`
+// call (which isn't valid JS on its own and would break pasting the line as-is).
 function resolveSizeCode(size, sizeText) {
-  return size ? size.code : `sizeRange(?) /* couldn't parse "${sizeText}" */`;
+  return size ? size.code : `'PUT_SIZE_HERE' /* suggested: "${sizeText}" */`;
 }
 
-// ---- Step 1: /lfg-suggestion new|edit -> category picker ----
+// ---- Step 1: /lfg-suggestion type:new|edit -> category picker ----
 async function sendCategoryPicker(interaction, mode) {
   sessions.set(interaction.user.id, { mode, category: null, activity: null });
 
@@ -168,7 +170,7 @@ function buildNewActivityModal() {
       .setStyle(TextInputStyle.Short)
       .setRequired(false)
       .setMaxLength(60)
-      .setPlaceholder('Use Discord\'s emoji picker, or paste/type one — an ID works too'),
+      .setPlaceholder('Paste a copied emoji, or type its ID (unicode emoji works too)'),
   });
 }
 
@@ -200,7 +202,7 @@ function buildEditActivityModal(activityOption) {
       .setValue(activityOption.color),
     emoji: new TextInputBuilder()
       .setCustomId('emoji')
-      .setLabel('Emoji (use the picker to change it)')
+      .setLabel('Emoji (paste one to change it)')
       .setStyle(TextInputStyle.Short)
       .setRequired(true)
       .setMaxLength(60)
