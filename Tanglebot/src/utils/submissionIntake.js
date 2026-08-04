@@ -217,7 +217,7 @@ async function resolveEventIdForChannel(channelId, config) {
     return eventId;
   } catch (error) {
     const details = error.response?.data ?? error.message;
-    console.error('Failed to resolve Discord submission channel via Supabase event_discord_channels:', {
+    console.error('[submissionIntake] Failed to resolve Discord submission channel via Supabase event_discord_channels:', {
       channelId,
       details,
     });
@@ -357,7 +357,7 @@ async function handleSubmissionMessage(message, config) {
     });
 
     if (result?.duplicate) {
-      console.log(`Duplicate submission ignored: message=${message.id} channel=${message.channelId} event=${eventId}`);
+      console.log(`[submissionIntake] Duplicate submission ignored: message=${message.id} channel=${message.channelId} event=${eventId}`);
       await statusReply.edit('This Discord message was already processed and is still linked to a pending submission.');
       return;
     }
@@ -370,7 +370,7 @@ async function handleSubmissionMessage(message, config) {
       parsed,
     });
 
-    console.log(`Submission forwarded: type=${isDrop ? 'drop' : 'kc'} message=${message.id} channel=${message.channelId} event=${eventId}`);
+    console.log(`[submissionIntake] Submission forwarded: type=${isDrop ? 'drop' : 'kc'} message=${message.id} channel=${message.channelId} event=${eventId}`);
 
     const successMessage = isDrop
       ? 'Drop proof received and sent to the site for manual review.'
@@ -378,7 +378,7 @@ async function handleSubmissionMessage(message, config) {
     await statusReply.edit(successMessage);
   } catch (error) {
     const reason = error instanceof Error ? error.message : 'Unknown error.';
-    console.error('Submission upload failed:', {
+    console.error('[submissionIntake] Submission upload failed:', {
       channelId: message.channelId,
       discordMessageId: message.id,
       eventId,

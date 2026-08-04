@@ -26,17 +26,17 @@ const rest = new REST().setToken(discordBotToken);
 
 (async () => {
   try {
-    console.log(`Deploying ${commands.length} slash command(s)...`);
+    console.log(`[deploy-commands] Deploying ${commands.length} slash command(s)...`);
     await rest.put(
       Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.CLAN_ID),
       { body: commands }
     );
-    console.log('Slash commands deployed successfully.');
+    console.log('[deploy-commands] Slash commands deployed successfully.');
   } catch (err) {
     if (err?.code === 50001) {
       console.error(
         [
-          'Discord rejected the command deploy with Missing Access.',
+          '[deploy-commands] Discord rejected the command deploy with Missing Access.',
           'Check that:',
           '- CLAN_ID is the Discord server ID where the bot is installed.',
           '- CLIENT_ID belongs to the same Discord application as DISCORD_BOT_TOKEN.',
@@ -45,6 +45,6 @@ const rest = new REST().setToken(discordBotToken);
         ].join('\n')
       );
     }
-    console.error(err);
+    console.error('[deploy-commands]', err);
   }
 })();

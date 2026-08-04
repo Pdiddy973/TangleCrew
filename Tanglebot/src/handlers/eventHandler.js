@@ -12,17 +12,17 @@ function loadEvents(client) {
   const submissionConfig = loadSubmissionConfig();
   client.submissionConfig = submissionConfig;
   if (submissionConfig.enabled) {
-    console.log('Discord submission intake enabled.');
+    console.log('[eventHandler] Discord submission intake enabled.');
   }
 
   const honeypotConfig = loadHoneypotConfig();
   client.honeypotConfig = honeypotConfig;
   if (honeypotConfig.enabled) {
-    console.log('Honeypot channel trap enabled.');
+    console.log('[eventHandler] Honeypot channel trap enabled.');
   }
 
   client.once(Events.ClientReady, async (c) => {
-    console.log(`Logged in as ${c.user.tag}`);
+    console.log(`[eventHandler] Logged in as ${c.user.tag}`);
     await syncCommands(client);
 
     const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
@@ -31,7 +31,7 @@ function loadEvents(client) {
         const channel = await client.channels.fetch(adminLogChannelId);
         await channel.send('Bot is online and ready.');
       } catch (err) {
-        console.error('Failed to send startup message to admin log channel:', err);
+        console.error('[eventHandler] Failed to send startup message to admin log channel:', err);
       }
     }
 
@@ -42,13 +42,13 @@ function loadEvents(client) {
     try {
       await handleSubmissionMessage(message, submissionConfig);
     } catch (err) {
-      console.error('Submission intake error:', err);
+      console.error('[eventHandler] Submission intake error:', err);
     }
 
     try {
       await handleHoneypotMessage(message, honeypotConfig, client);
     } catch (err) {
-      console.error('Honeypot error:', err);
+      console.error('[eventHandler] Honeypot error:', err);
     }
   });
 
@@ -60,7 +60,7 @@ function loadEvents(client) {
     try {
       await newMessage.delete();
     } catch (err) {
-      console.error('Failed to delete stale announcement message:', err);
+      console.error('[eventHandler] Failed to delete stale announcement message:', err);
     }
   });
 
@@ -70,7 +70,7 @@ function loadEvents(client) {
         try {
           await handleHoneypotButtonInteraction(interaction);
         } catch (err) {
-          console.error('Honeypot button interaction error:', err);
+          console.error('[eventHandler] Honeypot button interaction error:', err);
         }
       }
       return;
@@ -83,7 +83,7 @@ function loadEvents(client) {
       try {
         await command.autocomplete(interaction);
       } catch (err) {
-        console.error('Autocomplete error:', err);
+        console.error('[eventHandler] Autocomplete error:', err);
       }
       return;
     }
@@ -93,7 +93,7 @@ function loadEvents(client) {
     try {
       await command.execute(interaction);
     } catch (err) {
-      console.error(err);
+      console.error('[eventHandler]', err);
       const msg = { content: 'Something went wrong running that command.', flags: MessageFlags.Ephemeral };
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp(msg);
