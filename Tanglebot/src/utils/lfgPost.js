@@ -31,6 +31,8 @@ const {
   lfgRoleName,
   notifyAdminLog,
   scheduleReplyCleanup,
+  replyEphemeral,
+  followUpEphemeral,
   isValidColor,
   isValidEmoji,
 } = require('./roleMenu');
@@ -139,10 +141,7 @@ function buildSetupContent(session) {
 
 async function sendSetupMenu(interaction) {
   if (!FORUM_CHANNEL_ID) {
-    return interaction.reply({
-      content: '⚠️ LFG_FORUM_CHANNEL_ID is not set. Ask an admin to set it in the bot\'s environment variables.',
-      flags: MessageFlags.Ephemeral,
-    });
+    return replyEphemeral(interaction, '⚠️ LFG_FORUM_CHANNEL_ID is not set. Ask an admin to set it in the bot\'s environment variables.');
   }
 
   const session = getSession(interaction.user.id);
@@ -373,7 +372,7 @@ async function sendOrEditActivity(channel, group, text) {
 async function requireGroup(interaction, groupId) {
   const group = activeGroups.get(groupId);
   if (!group) {
-    await interaction.reply({ content: '⚠️ This group no longer exists.', flags: MessageFlags.Ephemeral });
+    await replyEphemeral(interaction, '⚠️ This group no longer exists.');
     return null;
   }
   return group;
@@ -399,7 +398,7 @@ async function updateGroupMessage(interaction, group, embed, row) {
   } catch (err) {
     if (!isUnknownMessageError(err)) throw err;
     cleanupStaleGroup(group);
-    await interaction.reply({ content: '⚠️ This group\'s post no longer exists.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    await replyEphemeral(interaction, '⚠️ This group\'s post no longer exists.').catch(() => {});
     return false;
   }
 }
@@ -415,10 +414,10 @@ async function handleJoinButton(interaction, groupId) {
   const group = await requireGroup(interaction, groupId);
   if (!group) return;
   if (group.status === 'closed') {
-    return interaction.reply({ content: '⚠️ This group is already full.', flags: MessageFlags.Ephemeral });
+    return replyEphemeral(interaction, '⚠️ This group is already full.');
   }
   if (group.members.has(interaction.user.id)) {
-    return interaction.reply({ content: 'You\'re already in this group.', flags: MessageFlags.Ephemeral });
+    return replyEphemeral(interaction, 'You\'re already in this group.');
   }
 
   group.members.add(interaction.user.id);
@@ -431,7 +430,7 @@ async function handleJoinButton(interaction, groupId) {
   const row = buildGroupRow(groupId, group.status);
 
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
-  await interaction.followUp({ content: '✅ You joined the group!', flags: MessageFlags.Ephemeral });
+  await followUpEphemeral(interaction, '✅ You joined the group!');
 
   if (justFilled) {
     await renameThread(interaction, group);
@@ -450,7 +449,7 @@ async function handleLeaveButton(interaction, groupId) {
   const group = await requireGroup(interaction, groupId);
   if (!group) return;
   if (!group.members.has(interaction.user.id)) {
-    return interaction.reply({ content: 'You\'re not in this group.', flags: MessageFlags.Ephemeral });
+    return replyEphemeral(interaction, 'You\'re not in this group.');
   }
 
   group.members.delete(interaction.user.id);
@@ -464,7 +463,7 @@ async function handleLeaveButton(interaction, groupId) {
   const embed = buildGroupEmbed(group);
   const row = buildGroupRow(groupId, group.status);
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
-  await interaction.followUp({ content: 'You left the group.', flags: MessageFlags.Ephemeral });
+  await followUpEphemeral(interaction, 'You left the group.');
 
   if (reopened) {
     await renameThread(interaction, group);
@@ -487,13 +486,10 @@ async function handleDisbandButton(interaction, groupId) {
   const group = await requireGroup(interaction, groupId);
   if (!group) return;
   if (!canDisbandGroup(interaction, group)) {
-    return interaction.reply({
-      content: '⚠️ Only members of this group, or a Coordinator or higher, can disband it.',
-      flags: MessageFlags.Ephemeral,
-    });
+    return replyEphemeral(interaction, '⚠️ Only members of this group, or a Coordinator or higher, can disband it.');
   }
   if (group.status === 'disbanded') {
-    return interaction.reply({ content: '⚠️ This group is already disbanded.', flags: MessageFlags.Ephemeral });
+    return replyEphemeral(interaction, '⚠️ This group is already disbanded.');
   }
 
   group.status = 'disbanded';

@@ -17,16 +17,24 @@ function lfgRoleName(baseName) {
   return `${ROLE_PREFIX}${baseName}`;
 }
 
-// Reports an operational issue to ADMIN_LOG_CHANNEL_ID as a red embed. Silently skipped if unset.
-async function notifyAdminLog(client, title, description) {
+// Default color for admin log embeds — red, signaling an operational issue that needs attention.
+const ADMIN_LOG_ALERT_COLOR = 0xed4245;
+
+// Reports something to ADMIN_LOG_CHANNEL_ID as an embed. Silently skipped if unset.
+// fields is optional — pass named {name, value, inline} entries for structured details (e.g.
+// "Suggested By", "Changes") instead of cramming everything into description, matching the
+// fields-based embeds honeypot.js's admin alerts already use.
+// color defaults to red (an alert); pass a different color for non-alert notices (e.g. suggestions).
+async function notifyAdminLog(client, title, description, fields = [], color = ADMIN_LOG_ALERT_COLOR) {
   const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
   if (!adminLogChannelId) return;
 
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setDescription(description)
-    .setColor(0xed4245)
+    .setColor(color)
     .setTimestamp();
+  if (fields.length) embed.addFields(fields);
 
   try {
     const channel = await client.channels.fetch(adminLogChannelId);
@@ -36,12 +44,21 @@ async function notifyAdminLog(client, title, description) {
   }
 }
 
+// Shorthand for the "just tell the user a short status" reply/follow-up shape repeated across
+// every LFG command, so {content, flags: Ephemeral} only needs to change in one place.
+function replyEphemeral(interaction, content) {
+  return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+}
+function followUpEphemeral(interaction, content) {
+  return interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+}
+
 // Reports an issue to admin log, then replies to the user with an ephemeral, ⚠️-prefixed message.
 // Shared by every /lfg-roles failure path (role creation, role assignment, clearing roles) so the
 // pairing only needs to change in one place.
 async function notifyAdminLogAndReply(interaction, title, adminMessage, userMessage) {
   await notifyAdminLog(interaction.client, title, adminMessage);
-  return interaction.reply({ content: userMessage, flags: MessageFlags.Ephemeral });
+  return replyEphemeral(interaction, userMessage);
 }
 
 // Deletes interaction's reply after delayMs, logging (rather than throwing) if it's already gone
@@ -291,7 +308,7 @@ async function handleClearAllRoles(interaction) {
   const lfgRoles = member.roles.cache.filter((r) => r.name.startsWith(ROLE_PREFIX));
 
   if (lfgRoles.size === 0) {
-    return interaction.reply({ content: 'You don\'t have any LFG roles to clear.', flags: MessageFlags.Ephemeral });
+    return replyEphemeral(interaction, 'You don\'t have any LFG roles to clear.');
   }
 
   try {
@@ -306,10 +323,7 @@ async function handleClearAllRoles(interaction) {
     );
   }
 
-  return interaction.reply({
-    content: `✅ Cleared ${lfgRoles.size} LFG role(s).`,
-    flags: MessageFlags.Ephemeral,
-  });
+  return replyEphemeral(interaction, `✅ Cleared ${lfgRoles.size} LFG role(s).`);
 }
 
 // Entry point called from eventHandler.js for any button customId starting with "roles:"
@@ -410,6 +424,8 @@ module.exports = {
   notifyAdminLog,
   notifyAdminLogAndReply,
   scheduleReplyCleanup,
+  replyEphemeral,
+  followUpEphemeral,
   emojiMarkup,
   isValidEmoji,
   isValidColor,

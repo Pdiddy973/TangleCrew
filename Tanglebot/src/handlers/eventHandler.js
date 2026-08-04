@@ -13,6 +13,10 @@ const {
   handleLfgPostModalSubmit,
   handleLfgPostGroupButtonInteraction,
 } = require('../utils/lfgPost');
+const {
+  handleLfgSuggestionSelectInteraction,
+  handleLfgSuggestionModalSubmit,
+} = require('../utils/lfgSuggestion');
 
 function loadEvents(client) {
   const submissionConfig = loadSubmissionConfig();
@@ -105,6 +109,13 @@ function loadEvents(client) {
           console.error('LFG post select interaction error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong updating your LFG post setup.');
         }
+      } else if (interaction.customId.startsWith('lfgsuggestion:')) {
+        try {
+          await handleLfgSuggestionSelectInteraction(interaction);
+        } catch (err) {
+          console.error('LFG suggestion select interaction error:', err);
+          await replyOrFollowUp(interaction, 'Something went wrong with your suggestion.');
+        }
       }
       return;
     }
@@ -116,6 +127,13 @@ function loadEvents(client) {
         } catch (err) {
           console.error('LFG post modal submit error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong creating your LFG post.');
+        }
+      } else if (interaction.customId.startsWith('lfgsuggestion:')) {
+        try {
+          await handleLfgSuggestionModalSubmit(interaction);
+        } catch (err) {
+          console.error('LFG suggestion modal submit error:', err);
+          await replyOrFollowUp(interaction, 'Something went wrong sending your suggestion.');
         }
       }
       return;
