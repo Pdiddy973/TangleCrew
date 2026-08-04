@@ -61,15 +61,16 @@ function sizeRangeWithMass(max) {
 // + a "Mass" size option:
 //   sizeOptions: sizeRangeWithMass(N),
 //
-// + a custom emoji (by ID only — no name needed):
-//   emoji: { id: 'PUT_EMOJI_ID_HERE' },
+// + an emoji — either a custom emoji's ID (no name needed) or a plain unicode emoji:
+//   emoji: 'PUT_EMOJI_ID_HERE',
+//   emoji: '🔥',
 //
 // + a custom /lfg-post embed color — accepts a '#RRGGBB' hex string or a 0xRRGGBB number, whichever's easier.
 // Omit to use the default (see DEFAULT_GROUP_COLOR in lfgGroup.js):
 //   color: '#3498db',
 //
 // All combined on one entry:
-//   { value: 'unique_key', label: 'Display Name', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Exact Name', maxPlayers: N, sizeOptions: sizeRangeWithMass(N), color: '#3498db' },
+//   { value: 'unique_key', label: 'Display Name', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'Exact Name', maxPlayers: N, sizeOptions: sizeRangeWithMass(N), color: '#3498db' },
 //
 // New category:
 //   new_key: {
@@ -84,14 +85,14 @@ const CATEGORIES = {
   bossing: {
     key: 'bossing',
     buttonLabel: 'Bossing',
-    buttonEmoji: { id: '1381713946591105187' },
+    buttonEmoji: '1381713946591105187',
     buttonStyle: ButtonStyle.Primary,
     prompt: 'Pick the bosses you want to be pingable for. Selected ones turn red and stay red until you click them again.',
     roles: [
-      { value: 'yama', label: 'Yama', emoji: { id: '1381816093336801340' }, roleName: 'Yama', maxPlayers: 2, color: '#9F0D19' },
-      { value: 'nightmare', label: 'Nightmare', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Nightmare', maxPlayers: 5, sizeOptions: sizeRangeWithMass(5) },
-      { value: 'royal_titans', label: 'Titans', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Royal Titans', maxPlayers: 2 },
-      { value: 'hueycoatl', label: 'Huey', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Hueycoatl', maxPlayers: 5 },
+      { value: 'yama', label: 'Yama', emoji: '1381816093336801340', roleName: 'Yama', maxPlayers: 2, color: '#9F0D19' },
+      { value: 'nightmare', label: 'Nightmare', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'Nightmare', maxPlayers: 5, sizeOptions: sizeRangeWithMass(5) },
+      { value: 'royal_titans', label: 'Titans', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'Royal Titans', maxPlayers: 2 },
+      { value: 'hueycoatl', label: 'Huey', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'Hueycoatl', maxPlayers: 5 },
       { value: 'callisto', label: 'Callisto', roleName: 'Callisto', maxPlayers: 5 },
       { value: 'zilyana', label: 'Zilyana', roleName: 'Zilyana', maxPlayers: 5 },
       { value: 'corp', label: 'Corp', roleName: 'Corp', maxPlayers: 10 },
@@ -112,9 +113,9 @@ const CATEGORIES = {
     buttonStyle: ButtonStyle.Primary,
     prompt: 'Pick the raids you want to be pingable for. Selected ones turn red and stay red until you click them again.',
     roles: [
-      { value: 'cox', label: 'CoX', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'CoX', maxPlayers: 7, sizeOptions: sizeRangeWithMass(7) },
-      { value: 'toa', label: 'ToA', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'ToA', maxPlayers: 8 },
-      { value: 'tob', label: 'ToB', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'ToB', maxPlayers: 5 },
+      { value: 'cox', label: 'CoX', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'CoX', maxPlayers: 7, sizeOptions: sizeRangeWithMass(7) },
+      { value: 'toa', label: 'ToA', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'ToA', maxPlayers: 8 },
+      { value: 'tob', label: 'ToB', emoji: 'PUT_EMOJI_ID_HERE', roleName: 'ToB', maxPlayers: 5 },
     ],
   },
   minigames: {
@@ -336,16 +337,25 @@ function memberHasRoleName(member, roleName) {
 }
 
 // A real Discord snowflake ID is a string of digits (typically 17-20 long).
-// This catches leftover placeholders like "PUT_EMOJI_ID_HERE" so we don't send an invalid emoji and silently fail the interaction.
-function isValidEmoji(emoji) {
-  return !!emoji && typeof emoji.id === 'string' && /^\d{15,25}$/.test(emoji.id);
+function isSnowflakeEmoji(emoji) {
+  return typeof emoji === 'string' && /^\d{15,25}$/.test(emoji);
 }
 
-// Renders a custom emoji object as inline markup usable in message/embed text (e.g. a title).
-// Discord resolves the emoji by ID here, so the name segment doesn't need to be accurate.
-// Returns null if there's no valid custom emoji, so callers can fall back to a default.
+// Accepts either a custom emoji's snowflake ID or a plain unicode emoji character.
+// Placeholders like "PUT_EMOJI_ID_HERE" are plain ASCII text (not digits, not a real
+// emoji glyph) so they fall through and get rejected here instead of silently failing
+// the interaction when sent to Discord.
+function isValidEmoji(emoji) {
+  if (typeof emoji !== 'string' || emoji.length === 0) return false;
+  return isSnowflakeEmoji(emoji) || /[^\x00-\x7F]/.test(emoji);
+}
+
+// Renders a role's emoji as inline markup usable in message/embed text (e.g. a title).
+// Custom emoji need Discord's <:_:ID> markup to resolve by ID; unicode emoji render as-is.
+// Returns null if there's no valid emoji, so callers can fall back to a default.
 function emojiMarkup(emoji) {
-  return isValidEmoji(emoji) ? `<:_:${emoji.id}>` : null;
+  if (!isValidEmoji(emoji)) return null;
+  return isSnowflakeEmoji(emoji) ? `<:_:${emoji}>` : emoji;
 }
 
 function chunkIntoRows(items, size) {
