@@ -7,12 +7,12 @@ const {
   loadHoneypotConfig,
   sendHoneypotStartupMessage,
 } = require('../utils/honeypot');
-const { handleRoleMenuButtonInteraction, syncCategoryRoles } = require('../utils/roleMenu');
+const { handleRoleMenuButtonInteraction } = require('../utils/roleMenu');
 const {
-  handleLfgForumSelectInteraction,
-  handleLfgForumModalSubmit,
-  handleLfgForumGroupButtonInteraction,
-} = require('../utils/lfgForum');
+  handleLfgPostSelectInteraction,
+  handleLfgPostModalSubmit,
+  handleLfgPostGroupButtonInteraction,
+} = require('../utils/lfgPost');
 
 function loadEvents(client) {
   const submissionConfig = loadSubmissionConfig();
@@ -30,16 +30,6 @@ function loadEvents(client) {
   client.once(Events.ClientReady, async (c) => {
     console.log(`Logged in as ${c.user.tag}`);
     await syncCommands(client);
-
-    const clanId = process.env.CLAN_ID;
-    if (clanId) {
-      try {
-        const guild = await client.guilds.fetch(clanId);
-        await syncCategoryRoles(guild);
-      } catch (err) {
-        console.error('Failed to sync LFG roles on startup:', err.message);
-      }
-    }
 
     const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
     const ownerRoleId = process.env.OWNER_ROLE_ID;
@@ -96,11 +86,11 @@ function loadEvents(client) {
           console.error('Role menu button interaction error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong updating your roles.');
         }
-      } else if (interaction.customId.startsWith('lfgforumgroup:')) {
+      } else if (interaction.customId.startsWith('lfgpostgroup:')) {
         try {
-          await handleLfgForumGroupButtonInteraction(interaction);
+          await handleLfgPostGroupButtonInteraction(interaction);
         } catch (err) {
-          console.error('LFG forum group button interaction error:', err);
+          console.error('LFG post group button interaction error:', err);
           await replyOrFollowUp(interaction, 'Something went wrong updating that group.');
         }
       }
@@ -108,24 +98,24 @@ function loadEvents(client) {
     }
 
     if (interaction.isStringSelectMenu()) {
-      if (interaction.customId.startsWith('lfgforum:')) {
+      if (interaction.customId.startsWith('lfgpost:')) {
         try {
-          await handleLfgForumSelectInteraction(interaction);
+          await handleLfgPostSelectInteraction(interaction);
         } catch (err) {
-          console.error('LFG forum select interaction error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong updating your LFG forum setup.');
+          console.error('LFG post select interaction error:', err);
+          await replyOrFollowUp(interaction, 'Something went wrong updating your LFG post setup.');
         }
       }
       return;
     }
 
     if (interaction.isModalSubmit()) {
-      if (interaction.customId.startsWith('lfgforum:')) {
+      if (interaction.customId.startsWith('lfgpost:')) {
         try {
-          await handleLfgForumModalSubmit(interaction);
+          await handleLfgPostModalSubmit(interaction);
         } catch (err) {
-          console.error('LFG forum modal submit error:', err);
-          await replyOrFollowUp(interaction, 'Something went wrong creating your LFG forum post.');
+          console.error('LFG post modal submit error:', err);
+          await replyOrFollowUp(interaction, 'Something went wrong creating your LFG post.');
         }
       }
       return;

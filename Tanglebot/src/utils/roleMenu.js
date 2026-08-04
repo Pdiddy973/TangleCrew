@@ -47,20 +47,29 @@ function sizeRangeWithMass(max) {
 }
 
 // ---- Category definitions ----
-// Feeds /lfg-pings (buttons) and the /lfg-forum Category -> Activity accordion.
-// Missing roles are auto-created as "LFG-<roleName>" (see ROLE_PREFIX above).
+// Feeds /lfg-roles (buttons) and the /lfg-post Category -> Activity accordion.
+// Missing roles are auto-created as "LFG-<roleName>" the first time they're actually needed (see ROLE_PREFIX above and ensureRoleExists below) — nothing is created up front.
 // Rename any pre-existing plain-named role to add the "LFG-" prefix so it's reused instead of duplicated.
 //
 // ---- Copy/paste templates ----
+// value, label, roleName, maxPlayers are required on every role entry below.
+// emoji, sizeOptions, and color are all optional and independent — add any combination of them to any entry.
 //
-// Role:
+// Basic role:
 //   { value: 'unique_key', label: 'Display Name', roleName: 'Exact Name', maxPlayers: N },
 //
-// Role with a "Mass" size option:
-//   { value: 'unique_key', label: 'Display Name', roleName: 'Exact Name', maxPlayers: N, sizeOptions: sizeRangeWithMass(N) },
+// + a "Mass" size option:
+//   sizeOptions: sizeRangeWithMass(N),
 //
-// Role with a custom emoji:
-//   { value: 'unique_key', label: 'Display Name', emoji: { name: 'emoji_name', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Exact Name', maxPlayers: N },
+// + a custom emoji (by ID only — no name needed):
+//   emoji: { id: 'PUT_EMOJI_ID_HERE' },
+//
+// + a custom /lfg-post embed color — accepts a '#RRGGBB' hex string or a 0xRRGGBB number, whichever's easier.
+// Omit to use the default (see DEFAULT_GROUP_COLOR in lfgGroup.js):
+//   color: '#3498db',
+//
+// All combined on one entry:
+//   { value: 'unique_key', label: 'Display Name', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Exact Name', maxPlayers: N, sizeOptions: sizeRangeWithMass(N), color: '#3498db' },
 //
 // New category:
 //   new_key: {
@@ -75,17 +84,14 @@ const CATEGORIES = {
   bossing: {
     key: 'bossing',
     buttonLabel: 'Bossing',
-    buttonEmoji: { name: 'bossing', id: '1381713946591105187' },
+    buttonEmoji: { id: '1381713946591105187' },
     buttonStyle: ButtonStyle.Primary,
     prompt: 'Pick the bosses you want to be pingable for. Selected ones turn red and stay red until you click them again.',
-    // Emojis are each boss's pet.
-    // Discord has no built-in OSRS pet emojis, so these must be CUSTOM emojis uploaded to your server.
-    // Upload the pet image, then replace PUT_EMOJI_ID_HERE with its real ID.
     roles: [
-      { value: 'yama', label: 'Yama', emoji: { name: 'yami', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Yama', maxPlayers: 2 },
-      { value: 'nightmare', label: 'Nightmare', emoji: { name: 'littlenightmare', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Nightmare', maxPlayers: 5, sizeOptions: sizeRangeWithMass(5) },
-      { value: 'royal_titans', label: 'Titans', emoji: { name: 'branric', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Royal Titans', maxPlayers: 2 },
-      { value: 'hueycoatl', label: 'Huey', emoji: { name: 'huberte', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Hueycoatl', maxPlayers: 5 },
+      { value: 'yama', label: 'Yama', emoji: { id: '1381816093336801340' }, roleName: 'Yama', maxPlayers: 2, color: '#9F0D19' },
+      { value: 'nightmare', label: 'Nightmare', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Nightmare', maxPlayers: 5, sizeOptions: sizeRangeWithMass(5) },
+      { value: 'royal_titans', label: 'Titans', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Royal Titans', maxPlayers: 2 },
+      { value: 'hueycoatl', label: 'Huey', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'Hueycoatl', maxPlayers: 5 },
       { value: 'callisto', label: 'Callisto', roleName: 'Callisto', maxPlayers: 5 },
       { value: 'zilyana', label: 'Zilyana', roleName: 'Zilyana', maxPlayers: 5 },
       { value: 'corp', label: 'Corp', roleName: 'Corp', maxPlayers: 10 },
@@ -106,18 +112,17 @@ const CATEGORIES = {
     buttonStyle: ButtonStyle.Primary,
     prompt: 'Pick the raids you want to be pingable for. Selected ones turn red and stay red until you click them again.',
     roles: [
-      { value: 'barb_assault', label: 'Barb Assault', roleName: 'Barb Assault', maxPlayers: 5 },
-      { value: 'cox', label: 'CoX', emoji: { name: 'olmlet', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'CoX', maxPlayers: 7, sizeOptions: sizeRangeWithMass(7) },
-      { value: 'toa', label: 'ToA', emoji: { name: 'tumekensguardian', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'ToA', maxPlayers: 8 },
-      { value: 'tob', label: 'ToB', emoji: { name: 'lilzik', id: 'PUT_EMOJI_ID_HERE' }, roleName: 'ToB', maxPlayers: 5 },
+      { value: 'cox', label: 'CoX', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'CoX', maxPlayers: 7, sizeOptions: sizeRangeWithMass(7) },
+      { value: 'toa', label: 'ToA', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'ToA', maxPlayers: 8 },
+      { value: 'tob', label: 'ToB', emoji: { id: 'PUT_EMOJI_ID_HERE' }, roleName: 'ToB', maxPlayers: 5 },
     ],
   },
   minigames: {
     key: 'minigames',
-    buttonLabel: 'Skilling/Minigame',
+    buttonLabel: 'Minigame',
     buttonEmoji: '⚒️',
     buttonStyle: ButtonStyle.Primary,
-    prompt: 'Pick the skilling activities/minigames you want to be pingable for. Selected ones turn red and stay red until you click them again.',
+    prompt: 'Pick the minigames you want to be pingable for. Selected ones turn red and stay red until you click them again.',
     roles: [
       { value: 'tempoross', label: 'Tempoross', roleName: 'Tempoross', maxPlayers: 10 },
       { value: 'zalcano', label: 'Zalcano', roleName: 'Zalcano', maxPlayers: 10 },
@@ -125,6 +130,7 @@ const CATEGORIES = {
       { value: 'gotr', label: 'GOTR', roleName: 'GOTR', maxPlayers: 10 },
       { value: 'soul_wars', label: 'Soul Wars', roleName: 'Soul Wars', maxPlayers: 10, sizeOptions: sizeRangeWithMass(10) },
       { value: 'castle_wars', label: 'Castle Wars', roleName: 'Castle Wars', maxPlayers: 10, sizeOptions: sizeRangeWithMass(10) },
+      { value: 'barb_assault', label: 'Barb Assault', roleName: 'Barb Assault', maxPlayers: 5 },
     ],
   },
 };
@@ -132,16 +138,18 @@ const CATEGORIES = {
 // customId scheme used for all buttons here:
 //   "roles:category:<categoryKey>"          — top-level Bossing/Raids button
 //   "roles:toggle:<categoryKey>:<roleValue>" — a specific boss/raid toggle
+//   "roles:clearall"                         — removes every LFG- role the member has
 // eventHandler.js routes any button whose customId starts with "roles:" here.
 
 function buildMenuEmbed() {
   return new EmbedBuilder()
-    .setTitle('LFG Pings')
+    .setTitle('LFG Roles')
     .setDescription(
       'Click **Bossing** or **💰 Raids** to pick specific bosses/raids. ' +
       'Selected ones turn red.\n\n' +
       'Once you have a role, anyone can `@mention` it to notify everyone ' +
       'signed up when that event is happening.\n\n' +
+      'Click **Clear All LFG Roles** to remove every LFG role you have in one go.\n\n' +
       '_This message will delete itself in 60 seconds — your roles stay either way._'
     )
     .setColor(0xc2a24c)
@@ -157,6 +165,14 @@ function buildCategoryButtonsRow() {
       .setStyle(cat.buttonStyle)
   );
   return new ActionRowBuilder().addComponents(buttons);
+}
+
+function buildClearAllRow() {
+  const clearAll = new ButtonBuilder()
+    .setCustomId('roles:clearall')
+    .setLabel('Clear All LFG Roles')
+    .setStyle(ButtonStyle.Danger);
+  return new ActionRowBuilder().addComponents(clearAll);
 }
 
 function buildCategoryButtonRows(categoryKey, member) {
@@ -209,7 +225,7 @@ async function handleRoleToggle(interaction, categoryKey, value) {
     await notifyAdminLog(
       interaction.client,
       '⚠️ LFG Role Creation Failed',
-      `Couldn't find or create **${lfgRoleName(roleConfig.roleName)}** for <@${interaction.user.id}> via /lfg-pings. Check the bot's **Manage Roles** permission.`
+      `Couldn't find or create **${lfgRoleName(roleConfig.roleName)}** for <@${interaction.user.id}> via /lfg-roles. Check the bot's **Manage Roles** permission.`
     );
     return interaction.reply({
       content: `⚠️ I couldn't find or create the role **${lfgRoleName(roleConfig.roleName)}**. Make sure I have the **Manage Roles** permission.`,
@@ -228,7 +244,7 @@ async function handleRoleToggle(interaction, categoryKey, value) {
     await notifyAdminLog(
       interaction.client,
       '⚠️ LFG Role Assignment Failed',
-      `Couldn't add/remove **${lfgRoleName(roleConfig.roleName)}** for <@${interaction.user.id}> via /lfg-pings: ${err.message}. Make sure the bot's role sits above it.`
+      `Couldn't add/remove **${lfgRoleName(roleConfig.roleName)}** for <@${interaction.user.id}> via /lfg-roles: ${err.message}. Make sure the bot's role sits above it.`
     );
     return interaction.reply({
       content: '⚠️ I couldn\'t update your roles. Make sure my role sits above these roles.',
@@ -240,9 +256,38 @@ async function handleRoleToggle(interaction, categoryKey, value) {
   return sendCategoryMenu(interaction, categoryKey, true);
 }
 
+async function handleClearAllRoles(interaction) {
+  const member = interaction.member;
+  const lfgRoles = member.roles.cache.filter((r) => r.name.startsWith(ROLE_PREFIX));
+
+  if (lfgRoles.size === 0) {
+    return interaction.reply({ content: 'You don\'t have any LFG roles to clear.', flags: MessageFlags.Ephemeral });
+  }
+
+  try {
+    await member.roles.remove(lfgRoles);
+  } catch (err) {
+    console.error('Clear all LFG roles error:', err);
+    await notifyAdminLog(
+      interaction.client,
+      '⚠️ LFG Role Clear Failed',
+      `Couldn't clear LFG roles for <@${interaction.user.id}>: ${err.message}. Make sure the bot's role sits above them.`
+    );
+    return interaction.reply({
+      content: '⚠️ I couldn\'t clear your roles. Make sure my role sits above these roles.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
+
+  return interaction.reply({
+    content: `✅ Cleared ${lfgRoles.size} LFG role(s).`,
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
 // Entry point called from eventHandler.js for any button customId starting with "roles:"
 async function handleRoleMenuButtonInteraction(interaction) {
-  const parts = interaction.customId.split(':'); // ["roles", "category"|"toggle", ...]
+  const parts = interaction.customId.split(':'); // ["roles", "category"|"toggle"|"clearall", ...]
   const kind = parts[1];
 
   if (kind === 'category') {
@@ -254,6 +299,10 @@ async function handleRoleMenuButtonInteraction(interaction) {
   if (kind === 'toggle') {
     const [, , categoryKey, value] = parts;
     return handleRoleToggle(interaction, categoryKey, value);
+  }
+
+  if (kind === 'clearall') {
+    return handleClearAllRoles(interaction);
   }
 }
 
@@ -281,37 +330,6 @@ async function ensureRoleExists(guild, name) {
   }
 }
 
-// Creates any CATEGORIES role missing from the guild.
-// Runs once at bot startup (see eventHandler.js).
-async function syncCategoryRoles(guild) {
-  await guild.roles.fetch(); // make sure the cache is fresh before checking
-
-  const roleNames = new Set();
-  for (const category of Object.values(CATEGORIES)) {
-    for (const role of category.roles) {
-      roleNames.add(role.roleName);
-    }
-  }
-
-  const failed = [];
-  for (const name of roleNames) {
-    const role = await ensureRoleExists(guild, name);
-    if (!role) failed.push(lfgRoleName(name));
-  }
-
-  if (failed.length > 0) {
-    console.error(
-      `LFG role sync: failed to create ${failed.length} role(s): ${failed.join(', ')}. ` +
-      'Make sure the bot has the Manage Roles permission.'
-    );
-    await notifyAdminLog(
-      guild.client,
-      '⚠️ LFG Role Sync Failed at Startup',
-      `Failed to create ${failed.length} role(s): ${failed.join(', ')}. Check the bot's **Manage Roles** permission.`
-    );
-  }
-}
-
 function memberHasRoleName(member, roleName) {
   const role = findRole(member.guild, roleName);
   return role ? member.roles.cache.has(role.id) : false;
@@ -321,6 +339,13 @@ function memberHasRoleName(member, roleName) {
 // This catches leftover placeholders like "PUT_EMOJI_ID_HERE" so we don't send an invalid emoji and silently fail the interaction.
 function isValidEmoji(emoji) {
   return !!emoji && typeof emoji.id === 'string' && /^\d{15,25}$/.test(emoji.id);
+}
+
+// Renders a custom emoji object as inline markup usable in message/embed text (e.g. a title).
+// Discord resolves the emoji by ID here, so the name segment doesn't need to be accurate.
+// Returns null if there's no valid custom emoji, so callers can fall back to a default.
+function emojiMarkup(emoji) {
+  return isValidEmoji(emoji) ? `<:_:${emoji.id}>` : null;
 }
 
 function chunkIntoRows(items, size) {
@@ -336,9 +361,10 @@ module.exports = {
   MENU_MESSAGE_LIFETIME_MS,
   buildMenuEmbed,
   buildCategoryButtonsRow,
+  buildClearAllRow,
   handleRoleMenuButtonInteraction,
   ensureRoleExists,
-  syncCategoryRoles,
   lfgRoleName,
   notifyAdminLog,
+  emojiMarkup,
 };

@@ -6,6 +6,7 @@ const {
   TextInputStyle,
   MessageFlags,
   ChannelType,
+  EmbedBuilder,
 } = require('discord.js');
 const {
   CATEGORY_OPTIONS,
@@ -22,14 +23,18 @@ const {
   buildGroupEmbed,
   buildGroupRow,
   makeGroupId,
+  resolveGroupColor,
   GROUP_FORMED_CLEANUP_DELAY_MS,
   computeStartTimeCleanupDelay,
 } = require('./lfgGroup');
 const { ensureRoleExists, lfgRoleName, notifyAdminLog } = require('./roleMenu');
 
-// The Discord Forum Channel where /lfg-forum posts get created as threads.
+// The Discord Forum Channel where /lfg-post posts get created as threads.
 // Create a Forum Channel in your server, copy its ID, and set this in .env.
 const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
+
+// If everyone leaves and the post sits empty this long, auto-delete it instead of waiting for the start time.
+const EMPTY_GROUP_CLEANUP_DELAY_MS = 30 * 60 * 1000;
 
 // In-memory state, lost on restart/redeploy — fine for same-day LFG posts, but worth knowing if the bot redeploys mid-event.
 const setupSessions = new Map(); // userId -> { category, activity, size, time }
@@ -49,7 +54,7 @@ function buildSetupComponents(session) {
   const rows = [];
 
   const categorySelect = new StringSelectMenuBuilder()
-    .setCustomId('lfgforum:select:category')
+    .setCustomId('lfgpost:select:category')
     .setPlaceholder('1. Choose a category')
     .addOptions(
       CATEGORY_OPTIONS.map((o) => ({
@@ -62,7 +67,7 @@ function buildSetupComponents(session) {
 
   if (session.category) {
     const activitySelect = new StringSelectMenuBuilder()
-      .setCustomId('lfgforum:select:activity')
+      .setCustomId('lfgpost:select:activity')
       .setPlaceholder('2. Choose an activity')
       .addOptions(
         getActivityOptions(session.category).map((r) => ({
@@ -77,7 +82,7 @@ function buildSetupComponents(session) {
   if (session.category && session.activity) {
     const activityOption = findActivityOption(session.category, session.activity);
     const sizeSelect = new StringSelectMenuBuilder()
-      .setCustomId('lfgforum:select:size')
+      .setCustomId('lfgpost:select:size')
       .setPlaceholder('3. Choose group size')
       .addOptions(
         buildSizeOptions(activityOption).map((o) => ({
@@ -91,7 +96,7 @@ function buildSetupComponents(session) {
 
   if (session.category && session.activity && session.size) {
     const timeSelect = new StringSelectMenuBuilder()
-      .setCustomId('lfgforum:select:time')
+      .setCustomId('lfgpost:select:time')
       .setPlaceholder('4. Choose a start time')
       .addOptions(
         TIME_OFFSET_OPTIONS.map((o) => ({
@@ -173,7 +178,7 @@ async function handleSetupSelect(interaction, field) {
 // ---- Once all 4 dropdowns are filled: open the description modal directly ----
 async function openDescriptionModal(interaction) {
   const modal = new ModalBuilder()
-    .setCustomId('lfgforum:desc')
+    .setCustomId('lfgpost:desc')
     .setTitle('Add a description');
 
   const descInput = new TextInputBuilder()
@@ -188,13 +193,13 @@ async function openDescriptionModal(interaction) {
   await interaction.showModal(modal);
 }
 
-// ---- Modal submit actually creates the forum post ----
+// ---- Modal submit actually creates the LFG post ----
 async function handleDescriptionModalSubmit(interaction) {
   const session = getSession(interaction.user.id);
   if (!session.category || !session.activity || !session.size || !session.time) {
-    return interaction.reply({
-      content: '⚠️ Something went wrong finding your selections — please run /lfg-forum again.',
-      flags: MessageFlags.Ephemeral,
+    return interaction.update({
+      content: '⚠️ Something went wrong finding your selections — please run /lfg-post again.',
+      components: [],
     });
   }
 
@@ -209,11 +214,11 @@ async function handleDescriptionModalSubmit(interaction) {
     await notifyAdminLog(
       interaction.client,
       '⚠️ LFG Role Creation Failed',
-      `Couldn't find or create **${lfgRoleName(activityOption.roleName)}** for <@${interaction.user.id}> via /lfg-forum. Check the bot's **Manage Roles** permission.`
+      `Couldn't find or create **${lfgRoleName(activityOption.roleName)}** for <@${interaction.user.id}> via /lfg-post. Check the bot's **Manage Roles** permission.`
     );
-    return interaction.reply({
+    return interaction.update({
       content: `⚠️ I couldn't find or create the role **${lfgRoleName(activityOption.roleName)}**. Make sure I have the **Manage Roles** permission.`,
-      flags: MessageFlags.Ephemeral,
+      components: [],
     });
   }
 
@@ -222,11 +227,11 @@ async function handleDescriptionModalSubmit(interaction) {
     await notifyAdminLog(
       interaction.client,
       '⚠️ LFG Forum Channel Misconfigured',
-      `<@${interaction.user.id}> tried /lfg-forum but LFG_FORUM_CHANNEL_ID doesn't point to a valid Forum Channel.`
+      `<@${interaction.user.id}> tried /lfg-post but LFG_FORUM_CHANNEL_ID doesn't point to a valid Forum Channel.`
     );
-    return interaction.reply({
+    return interaction.update({
       content: '⚠️ LFG_FORUM_CHANNEL_ID doesn\'t point to a valid Forum Channel. Ask an admin to check the setup.',
-      flags: MessageFlags.Ephemeral,
+      components: [],
     });
   }
 
@@ -240,6 +245,8 @@ async function handleDescriptionModalSubmit(interaction) {
     creatorId: interaction.user.id,
     creatorTag: interaction.user.username,
     roleLabel,
+    color: activityOption.color,
+    emoji: activityOption.emoji,
     startLabel: timeOption.label,
     timeEpoch,
     sizeLabel: sizeOption.label,
@@ -248,12 +255,13 @@ async function handleDescriptionModalSubmit(interaction) {
     members: new Set([interaction.user.id]),
     status: 'open',
     threadId: null,
+    activityMessageId: null,
     cleanupTimeoutId: null,
   };
   activeGroups.set(groupId, group);
 
   const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, 'open', 'lfgforumgroup');
+  const row = buildGroupRow(groupId, 'open', 'lfgpostgroup');
 
   // Auto-apply a matching forum tag if one exists with the same name as the activity (e.g. "Yama" — the base name, not the "LFG-" prefixed role).
   // Entirely optional — skipped if none matches.
@@ -261,11 +269,8 @@ async function handleDescriptionModalSubmit(interaction) {
     (t) => t.name.toLowerCase() === activityOption.roleName.toLowerCase()
   );
 
-  // Description (if provided) leads the message content so it shows in the forum's post-list preview snippet, which pulls from the start of the message text.
-  // The role ping still fires a notification wherever it sits.
-  const startContent = description
-    ? `**${description}**\n\n<@&${guildRole.id}>`
-    : `<@&${guildRole.id}>`;
+  // The description only shows in the embed (see buildGroupEmbed) — the message content is just the role ping.
+  const startContent = `<@&${guildRole.id}>`;
 
   let thread;
   try {
@@ -280,37 +285,36 @@ async function handleDescriptionModalSubmit(interaction) {
     });
   } catch (err) {
     activeGroups.delete(groupId);
-    console.error(`Could not create LFG forum post for group ${groupId}:`, err.message);
+    console.error(`Could not create LFG post for group ${groupId}:`, err.message);
     await notifyAdminLog(
       interaction.client,
-      '⚠️ LFG Forum Post Creation Failed',
-      `Failed to create a forum post for <@${interaction.user.id}> (${roleLabel}): ${err.message}`
+      '⚠️ LFG Post Creation Failed',
+      `Failed to create a post for <@${interaction.user.id}> (${roleLabel}): ${err.message}`
     );
-    return interaction.reply({
-      content: '⚠️ Something went wrong creating the forum post. Please try again.',
-      flags: MessageFlags.Ephemeral,
+    return interaction.update({
+      content: '⚠️ Something went wrong creating the post. Please try again.',
+      components: [],
     });
   }
 
   group.threadId = thread.id;
 
   // Auto-delete once the chosen start time has passed, unless the group closes/fills/disbands sooner.
-  scheduleForumGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
+  schedulePostGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
   setupSessions.delete(interaction.user.id);
 
   const threadLink = `https://discord.com/channels/${interaction.guildId}/${thread.id}`;
-  await interaction.reply({
-    content: `✅ Your LFG forum post has been created: [Click here to view it](${threadLink})`,
-    flags: MessageFlags.Ephemeral,
+  await interaction.update({
+    content: `✅ Your LFG post has been created: [Click here to view it](${threadLink})`,
+    components: [],
   });
   setTimeout(() => interaction.deleteReply().catch(() => {}), 30000);
 }
 
 // Only the status word changes here — member count lives in the embed instead (updates via message edit, not the channel rename rate limit).
-// Note: Discord thread/channel names are plain text only — this shows the creator's name for reference, but it can't be a real clickable @mention or trigger a notification the way an in-message mention does.
+// The creator isn't included here (it's in the embed footer instead) to keep the title short — Discord thread/channel names are capped at 100 characters.
 function buildThreadName(group, statusWord) {
-  const name = `[${statusWord}] - ${group.roleLabel} - Start: ${group.startLabel} - @${group.creatorTag}`;
-  // Discord channel/thread names are capped at 100 characters.
+  const name = `[${statusWord}] - ${group.roleLabel} - Start: ${group.startLabel}`;
   return name.length > 100 ? `${name.slice(0, 99)}…` : name;
 }
 
@@ -322,12 +326,30 @@ async function renameThread(interaction, group) {
   try {
     await interaction.channel.setName(buildThreadName(group, statusWordFor(group)));
   } catch (err) {
-    console.error(`Could not rename LFG forum thread ${group.id}:`, err.message);
+    console.error(`Could not rename LFG post thread ${group.id}:`, err.message);
   }
 }
 
 function mentionAll(group) {
   return [...group.members].map((id) => `<@${id}>`).join(' ');
+}
+
+// Join/leave/formed/reopened notices all share one message per group, edited in place instead of piling up as a new message every time something happens.
+async function sendOrEditActivity(channel, group, text) {
+  const embed = new EmbedBuilder().setDescription(text).setColor(resolveGroupColor(group)).setTimestamp();
+
+  if (group.activityMessageId) {
+    try {
+      const existing = await channel.messages.fetch(group.activityMessageId);
+      await existing.edit({ embeds: [embed] });
+      return;
+    } catch (err) {
+      // Message is gone (e.g. manually deleted) — fall through and send a fresh one.
+    }
+  }
+
+  const sent = await channel.send({ embeds: [embed] });
+  group.activityMessageId = sent.id;
 }
 
 // Looks up the group for a button interaction, replying "no longer exists" and returning null if it's gone.
@@ -338,6 +360,38 @@ async function requireGroup(interaction, groupId) {
     return null;
   }
   return group;
+}
+
+// True for Discord's "Unknown Message" error — thrown when the post's message/thread was already deleted (auto-cleanup fired, manually removed, etc.) before a pending button click got processed.
+function isUnknownMessageError(err) {
+  return err?.code === 10008;
+}
+
+// The underlying post is gone — drop the now-stale in-memory group instead of leaking it forever (every future click on the dead button would otherwise keep hitting the same error).
+function cleanupStaleGroup(group) {
+  if (group.cleanupTimeoutId) clearTimeout(group.cleanupTimeoutId);
+  activeGroups.delete(group.id);
+}
+
+// Updates the group's post with a fresh embed/row, cleaning up and replying if the post is already gone.
+// Returns false (the caller should stop) if the update failed because the post no longer exists.
+async function updateGroupMessage(interaction, group, embed, row) {
+  try {
+    await interaction.update({ embeds: [embed], components: [row] });
+    return true;
+  } catch (err) {
+    if (!isUnknownMessageError(err)) throw err;
+    cleanupStaleGroup(group);
+    await interaction.reply({ content: '⚠️ This group\'s post no longer exists.', flags: MessageFlags.Ephemeral }).catch(() => {});
+    return false;
+  }
+}
+
+// Disbanding is limited to current members of the group, or Coordinator/Owner staff.
+function canDisbandGroup(interaction, group) {
+  if (group.members.has(interaction.user.id)) return true;
+  const staffRoleIds = [process.env.COORDINATOR_ROLE_ID, process.env.OWNER_ROLE_ID].filter(Boolean);
+  return staffRoleIds.some((roleId) => interaction.member.roles.cache.has(roleId));
 }
 
 async function handleJoinButton(interaction, groupId) {
@@ -357,17 +411,21 @@ async function handleJoinButton(interaction, groupId) {
   }
 
   const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, group.status, 'lfgforumgroup');
+  const row = buildGroupRow(groupId, group.status, 'lfgpostgroup');
 
-  await interaction.update({ embeds: [embed], components: [row] });
+  if (!(await updateGroupMessage(interaction, group, embed, row))) return;
   await interaction.followUp({ content: '✅ You joined the group!', flags: MessageFlags.Ephemeral });
 
   if (justFilled) {
     await renameThread(interaction, group);
-    await interaction.channel.send({ content: `${mentionAll(group)}\n🎉 **Group formed, Good luck!**` });
-    scheduleForumGroupCleanup(interaction.client, group, GROUP_FORMED_CLEANUP_DELAY_MS);
+    await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🎉 **Group formed, Good luck!**`);
+    schedulePostGroupCleanup(interaction.client, group, GROUP_FORMED_CLEANUP_DELAY_MS);
   } else {
-    await interaction.channel.send({ content: `${mentionAll(group)}\n🔔 <@${interaction.user.id}> joined the group!` });
+    if (group.members.size === 1) {
+      // Group was empty and just got someone back — cancel the empty-group cleanup, back to the normal start-time schedule.
+      schedulePostGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
+    }
+    await sendOrEditActivity(interaction.channel, group, `${mentionAll(group)}\n🔔 <@${interaction.user.id}> joined the group!`);
   }
 }
 
@@ -379,55 +437,44 @@ async function handleLeaveButton(interaction, groupId) {
   }
 
   group.members.delete(interaction.user.id);
+
+  // A full group always has room again the moment someone leaves it — reopen automatically instead of waiting for a manual Reopen click.
+  const reopened = group.status === 'closed';
+  if (reopened) {
+    group.status = 'open';
+  }
+
   const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, group.status, 'lfgforumgroup');
-  await interaction.update({ embeds: [embed], components: [row] });
+  const row = buildGroupRow(groupId, group.status, 'lfgpostgroup');
+  if (!(await updateGroupMessage(interaction, group, embed, row))) return;
   await interaction.followUp({ content: 'You left the group.', flags: MessageFlags.Ephemeral });
 
+  if (reopened) {
+    await renameThread(interaction, group);
+  }
+
   if (group.members.size > 0) {
-    await interaction.channel.send({ content: `${mentionAll(group)}\n⚠️ <@${interaction.user.id}> left the group.` });
+    const lines = [mentionAll(group), `⚠️ <@${interaction.user.id}> left the group.`];
+    if (reopened) lines.push('🔓 **This group has space again and is accepting new members!**');
+    await sendOrEditActivity(interaction.channel, group, lines.join('\n'));
+    if (reopened) {
+      schedulePostGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
+    }
+  } else {
+    // Nobody left in the group — no point keeping the post up for the full start-time window.
+    schedulePostGroupCleanup(interaction.client, group, EMPTY_GROUP_CLEANUP_DELAY_MS);
   }
-}
-
-async function handleCloseButton(interaction, groupId) {
-  const group = await requireGroup(interaction, groupId);
-  if (!group) return;
-  if (group.status !== 'open') {
-    return interaction.reply({ content: '⚠️ This group is already closed.', flags: MessageFlags.Ephemeral });
-  }
-
-  group.status = 'closed';
-  const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, 'closed', 'lfgforumgroup');
-  await interaction.update({ embeds: [embed], components: [row] });
-  await renameThread(interaction, group);
-
-  await interaction.channel.send({ content: `${mentionAll(group)}\n🎉 **Group formed, Good luck!**` });
-
-  scheduleForumGroupCleanup(interaction.client, group, GROUP_FORMED_CLEANUP_DELAY_MS);
-}
-
-async function handleReopenButton(interaction, groupId) {
-  const group = await requireGroup(interaction, groupId);
-  if (!group) return;
-  if (group.status !== 'closed') {
-    return interaction.reply({ content: '⚠️ This group isn\'t currently closed.', flags: MessageFlags.Ephemeral });
-  }
-
-  group.status = 'open';
-  const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, 'open', 'lfgforumgroup');
-  await interaction.update({ embeds: [embed], components: [row] });
-  await renameThread(interaction, group);
-
-  await interaction.channel.send({ content: `${mentionAll(group)}\n🔓 **This group has been reopened and is accepting new members again!**` });
-
-  scheduleForumGroupCleanup(interaction.client, group, computeStartTimeCleanupDelay(group.timeEpoch));
 }
 
 async function handleDisbandButton(interaction, groupId) {
   const group = await requireGroup(interaction, groupId);
   if (!group) return;
+  if (!canDisbandGroup(interaction, group)) {
+    return interaction.reply({
+      content: '⚠️ Only members of this group, or a Coordinator or higher, can disband it.',
+      flags: MessageFlags.Ephemeral,
+    });
+  }
   if (group.status === 'disbanded') {
     return interaction.reply({ content: '⚠️ This group is already disbanded.', flags: MessageFlags.Ephemeral });
   }
@@ -437,19 +484,25 @@ async function handleDisbandButton(interaction, groupId) {
     clearTimeout(group.cleanupTimeoutId);
   }
 
-  await interaction.deferUpdate();
+  try {
+    await interaction.deferUpdate();
+  } catch (err) {
+    if (!isUnknownMessageError(err)) throw err;
+    cleanupStaleGroup(group);
+    return;
+  }
 
   try {
     const thread = await interaction.client.channels.fetch(group.threadId);
     await thread.delete();
   } catch (err) {
-    console.error(`Could not delete disbanded LFG forum post ${group.id}:`, err.message);
+    console.error(`Could not delete disbanded LFG post ${group.id}:`, err.message);
   }
 
   activeGroups.delete(groupId);
 }
 
-function scheduleForumGroupCleanup(client, group, delayMs) {
+function schedulePostGroupCleanup(client, group, delayMs) {
   if (group.cleanupTimeoutId) {
     clearTimeout(group.cleanupTimeoutId);
   }
@@ -457,39 +510,37 @@ function scheduleForumGroupCleanup(client, group, delayMs) {
   group.cleanupTimeoutId = setTimeout(async () => {
     try {
       const thread = await client.channels.fetch(group.threadId);
-      await thread.delete(); // deletes the entire forum post, no need to remove messages individually
+      await thread.delete(); // deletes the entire post, no need to remove messages individually
     } catch (err) {
-      console.error(`Could not delete expired LFG forum post ${group.id}:`, err.message);
+      console.error(`Could not delete expired LFG post ${group.id}:`, err.message);
     }
     activeGroups.delete(group.id);
   }, delayMs);
 }
 
 // ---- Entry points called from eventHandler.js ----
-async function handleLfgForumSelectInteraction(interaction) {
-  const field = interaction.customId.split(':')[2]; // "lfgforum:select:<field>"
+async function handleLfgPostSelectInteraction(interaction) {
+  const field = interaction.customId.split(':')[2]; // "lfgpost:select:<field>"
   if (!['category', 'activity', 'size', 'time'].includes(field)) return;
   return handleSetupSelect(interaction, field);
 }
 
-async function handleLfgForumModalSubmit(interaction) {
-  if (interaction.customId === 'lfgforum:desc') {
+async function handleLfgPostModalSubmit(interaction) {
+  if (interaction.customId === 'lfgpost:desc') {
     return handleDescriptionModalSubmit(interaction);
   }
 }
 
-async function handleLfgForumGroupButtonInteraction(interaction) {
-  const [, action, groupId] = interaction.customId.split(':'); // "lfgforumgroup:<action>:<groupId>"
+async function handleLfgPostGroupButtonInteraction(interaction) {
+  const [, action, groupId] = interaction.customId.split(':'); // "lfgpostgroup:<action>:<groupId>"
   if (action === 'join') return handleJoinButton(interaction, groupId);
   if (action === 'leave') return handleLeaveButton(interaction, groupId);
-  if (action === 'close') return handleCloseButton(interaction, groupId);
   if (action === 'disband') return handleDisbandButton(interaction, groupId);
-  if (action === 'reopen') return handleReopenButton(interaction, groupId);
 }
 
 module.exports = {
   sendSetupMenu,
-  handleLfgForumSelectInteraction,
-  handleLfgForumModalSubmit,
-  handleLfgForumGroupButtonInteraction,
+  handleLfgPostSelectInteraction,
+  handleLfgPostModalSubmit,
+  handleLfgPostGroupButtonInteraction,
 };
