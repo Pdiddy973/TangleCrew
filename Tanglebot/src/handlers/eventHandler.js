@@ -7,6 +7,46 @@ const {
   loadHoneypotConfig,
   sendHoneypotStartupMessage,
 } = require('../utils/honeypot');
+const { handleRoleMenuButtonInteraction } = require('../utils/roleMenu');
+const {
+  handleLfgPostSelectInteraction,
+  handleLfgPostModalSubmit,
+  handleLfgPostGroupButtonInteraction,
+} = require('../utils/lfgPost');
+const {
+  handleLfgSuggestionSelectInteraction,
+  handleLfgSuggestionModalSubmit,
+} = require('../utils/lfgSuggestion');
+
+// customId-prefix routing tables for InteractionCreate, one per interaction kind. errorReply is
+// optional — omitted for the honeypot button so a mis-click there stays silent instead of
+// tipping off whoever triggered it, matching every route's prior individual behavior.
+const BUTTON_ROUTES = [
+  { prefix: 'hp:', handler: handleHoneypotButtonInteraction, errorLabel: 'Honeypot button interaction error:' },
+  { prefix: 'roles:', handler: handleRoleMenuButtonInteraction, errorLabel: 'Role menu button interaction error:', errorReply: 'Something went wrong updating your roles.' },
+  { prefix: 'lfgpostgroup:', handler: handleLfgPostGroupButtonInteraction, errorLabel: '[LFG] Post group button interaction error:', errorReply: 'Something went wrong updating that group.' },
+];
+const SELECT_ROUTES = [
+  { prefix: 'lfgpost:', handler: handleLfgPostSelectInteraction, errorLabel: '[LFG] Post select interaction error:', errorReply: 'Something went wrong updating your LFG post setup.' },
+  { prefix: 'lfgsuggestion:', handler: handleLfgSuggestionSelectInteraction, errorLabel: '[LFG] Suggestion select interaction error:', errorReply: 'Something went wrong with your suggestion.' },
+];
+const MODAL_ROUTES = [
+  { prefix: 'lfgpost:', handler: handleLfgPostModalSubmit, errorLabel: '[LFG] Post modal submit error:', errorReply: 'Something went wrong creating your LFG post.' },
+  { prefix: 'lfgsuggestion:', handler: handleLfgSuggestionModalSubmit, errorLabel: '[LFG] Suggestion modal submit error:', errorReply: 'Something went wrong sending your suggestion.' },
+];
+
+// Finds the route whose prefix matches this interaction's customId (if any) and runs it, logging
+// and optionally replying on failure — the shared shape every button/select/modal route above needs.
+async function dispatchByCustomIdPrefix(interaction, routes) {
+  const route = routes.find((r) => interaction.customId.startsWith(r.prefix));
+  if (!route) return;
+  try {
+    await route.handler(interaction);
+  } catch (err) {
+    console.error(route.errorLabel, err);
+    if (route.errorReply) await replyOrFollowUp(interaction, route.errorReply);
+  }
+}
 
 function loadEvents(client) {
   const submissionConfig = loadSubmissionConfig();
@@ -67,13 +107,17 @@ function loadEvents(client) {
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton()) {
-      if (interaction.customId.startsWith('hp:')) {
-        try {
-          await handleHoneypotButtonInteraction(interaction);
-        } catch (err) {
-          console.error('Honeypot button interaction error:', err);
-        }
-      }
+      await dispatchByCustomIdPrefix(interaction, BUTTON_ROUTES);
+      return;
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      await dispatchByCustomIdPrefix(interaction, SELECT_ROUTES);
+      return;
+    }
+
+    if (interaction.isModalSubmit()) {
+      await dispatchByCustomIdPrefix(interaction, MODAL_ROUTES);
       return;
     }
 
@@ -95,14 +139,18 @@ function loadEvents(client) {
       await command.execute(interaction);
     } catch (err) {
       console.error(err);
-      const msg = { content: 'Something went wrong running that command.', flags: MessageFlags.Ephemeral };
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp(msg);
-      } else {
-        await interaction.reply(msg);
-      }
+      await replyOrFollowUp(interaction, 'Something went wrong running that command.');
     }
   });
+}
+
+async function replyOrFollowUp(interaction, content) {
+  const msg = { content, flags: MessageFlags.Ephemeral };
+  if (interaction.replied || interaction.deferred) {
+    await interaction.followUp(msg).catch(() => {});
+  } else {
+    await interaction.reply(msg).catch(() => {});
+  }
 }
 
 module.exports = { loadEvents };
