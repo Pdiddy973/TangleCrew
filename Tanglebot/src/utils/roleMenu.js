@@ -63,71 +63,61 @@ function sizeRangeWithMass(max) {
 //
 // ---- Copy/paste template ----
 // New role:
-//   { value: 'unique_key', label: 'Display Name', roleName: 'Exact Name', maxPlayers: N, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(N), color: '#006400' },
+//   { value: 'unique_key', label: 'Display Name', roleName: 'Exact Name', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(N), color: '#006400' },
 //
 // New category:
 //   new_key: {
-//     key: 'new_key',
-//     buttonLabel: 'Label',
-//     dropdownLabel: 'Shorter Label',
+//     label: 'Label',
 //     buttonEmoji: '🔥',
-//     buttonStyle: ButtonStyle.Primary,
-//     prompt: 'Pick the activities you want to be pingable for. Selected ones turn red and stay red until you click them again.',
+//     buttonStyle: ButtonStyle.Primary, // optional, defaults to Primary
+//     activityNoun: 'activities', // plural noun used in the picker prompt, e.g. "Pick the <activityNoun> you want..."
 //     roles: [ /* role entries above */ ],
 //   },
 const CATEGORIES = {
   bossing: {
-    key: 'bossing',
-    buttonLabel: 'Bossing',
-    dropdownLabel: 'Boss',
+    label: 'Bossing',
     buttonEmoji: '1381713946591105187',
-    buttonStyle: ButtonStyle.Primary,
-    prompt: 'Pick the bosses you want to be pingable for. Selected ones turn red and stay red until you click them again.',
+    activityNoun: 'bosses',
     roles: [
-      { value: 'yama', label: 'Yama', roleName: 'Yama', maxPlayers: 2, emoji: '1381816093336801340', sizeOptions: sizeRange(2), color: '#9F0D19' },
-      { value: 'nightmare', label: 'Nightmare', roleName: 'Nightmare', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { value: 'royal_titans', label: 'Titans', roleName: 'Royal Titans', maxPlayers: 2, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(2), color: '#006400' },
-      { value: 'hueycoatl', label: 'Huey', roleName: 'Hueycoatl', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'callisto', label: 'Callisto', roleName: 'Callisto', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'zilyana', label: 'Zilyana', roleName: 'Zilyana', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'corp', label: 'Corp', roleName: 'Corp', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
-      { value: 'dks', label: 'DKS', roleName: 'DKS', maxPlayers: 3, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(3), color: '#006400' },
-      { value: 'graardor', label: 'Graardor', roleName: 'Graardor', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'kril', label: 'Kril', roleName: 'Kril', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'kree', label: 'Kree', roleName: 'Kree', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'nex', label: 'Nex', roleName: 'Nex', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
-      { value: 'scurrius', label: 'Scurrius', roleName: 'Scurrius', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'venenatis', label: 'Venenatis', roleName: 'Venenatis', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
-      { value: 'vetion', label: 'Vet\'ion', roleName: 'Vet\'ion', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'yama', label: 'Yama', roleName: 'Yama', emoji: '1381816093336801340', sizeOptions: sizeRange(2), color: '#9F0D19' },
+      { value: 'nightmare', label: 'Nightmare', roleName: 'Nightmare', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { value: 'royal_titans', label: 'Titans', roleName: 'Royal Titans', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(2), color: '#006400' },
+      { value: 'hueycoatl', label: 'Huey', roleName: 'Hueycoatl', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'callisto', label: 'Callisto', roleName: 'Callisto', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'zilyana', label: 'Zilyana', roleName: 'Zilyana', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'corp', label: 'Corp', roleName: 'Corp', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'dks', label: 'DKS', roleName: 'DKS', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(3), color: '#006400' },
+      { value: 'graardor', label: 'Graardor', roleName: 'Graardor', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'kril', label: 'Kril', roleName: 'Kril', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'kree', label: 'Kree', roleName: 'Kree', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'nex', label: 'Nex', roleName: 'Nex', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(5), color: '#006400' },
+      { value: 'scurrius', label: 'Scurrius', roleName: 'Scurrius', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'venenatis', label: 'Venenatis', roleName: 'Venenatis', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'vetion', label: 'Vet\'ion', roleName: 'Vet\'ion', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
     ],
   },
   raids: {
-    key: 'raids',
-    buttonLabel: 'Raids',
-    dropdownLabel: 'Raid',
+    label: 'Raids',
     buttonEmoji: '💰',
-    buttonStyle: ButtonStyle.Primary,
-    prompt: 'Pick the raids you want to be pingable for. Selected ones turn red and stay red until you click them again.',
+    activityNoun: 'raids',
     roles: [
-      { value: 'cox', label: 'CoX', roleName: 'CoX', maxPlayers: 7, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(7), color: '#006400' },
-      { value: 'toa', label: 'ToA', roleName: 'ToA', maxPlayers: 8, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(8), color: '#006400' },
-      { value: 'tob', label: 'ToB', roleName: 'ToB', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'cox', label: 'CoX', roleName: 'CoX', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(7), color: '#006400' },
+      { value: 'toa', label: 'ToA', roleName: 'ToA', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(8), color: '#006400' },
+      { value: 'tob', label: 'ToB', roleName: 'ToB', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
     ],
   },
   minigames: {
-    key: 'minigames',
-    buttonLabel: 'Minigame',
+    label: 'Minigames',
     buttonEmoji: '⚒️',
-    buttonStyle: ButtonStyle.Primary,
-    prompt: 'Pick the minigames you want to be pingable for. Selected ones turn red and stay red until you click them again.',
+    activityNoun: 'minigames',
     roles: [
-      { value: 'tempoross', label: 'Tempoross', roleName: 'Tempoross', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
-      { value: 'zalcano', label: 'Zalcano', roleName: 'Zalcano', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
-      { value: 'wintertodt', label: 'Wintertodt', roleName: 'Wintertodt', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
-      { value: 'gotr', label: 'GOTR', roleName: 'GOTR', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
-      { value: 'soul_wars', label: 'Soul Wars', roleName: 'Soul Wars', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { value: 'castle_wars', label: 'Castle Wars', roleName: 'Castle Wars', maxPlayers: 10, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
-      { value: 'barb_assault', label: 'Barb Assault', roleName: 'Barb Assault', maxPlayers: 5, emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
+      { value: 'tempoross', label: 'Tempoross', roleName: 'Tempoross', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'zalcano', label: 'Zalcano', roleName: 'Zalcano', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'wintertodt', label: 'Wintertodt', roleName: 'Wintertodt', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'gotr', label: 'GOTR', roleName: 'GOTR', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(10), color: '#006400' },
+      { value: 'soul_wars', label: 'Soul Wars', roleName: 'Soul Wars', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { value: 'castle_wars', label: 'Castle Wars', roleName: 'Castle Wars', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRangeWithMass(10), color: '#006400' },
+      { value: 'barb_assault', label: 'Barb Assault', roleName: 'Barb Assault', emoji: 'PUT_EMOJI_ID_HERE', sizeOptions: sizeRange(5), color: '#006400' },
     ],
   },
 };
@@ -144,10 +134,15 @@ function joinWithOr(items) {
   return `${items.slice(0, -1).join(', ')}, or ${items[items.length - 1]}`;
 }
 
+// Shared submenu prompt text, parameterized by each category's activityNoun (e.g. "bosses", "raids").
+function categoryPrompt(activityNoun) {
+  return `Pick the ${activityNoun} you want to be pingable for. Selected ones turn red and stay red until you click them again.`;
+}
+
 function buildMenuEmbed() {
   const categoryLabels = Object.values(CATEGORIES).map((cat) => {
     const emoji = emojiMarkup(cat.buttonEmoji);
-    return `**${emoji ? `${emoji} ` : ''}${cat.buttonLabel}**`;
+    return `**${emoji ? `${emoji} ` : ''}${cat.label}**`;
   });
 
   return new EmbedBuilder()
@@ -165,13 +160,14 @@ function buildMenuEmbed() {
 }
 
 function buildCategoryButtonsRow() {
-  const buttons = Object.values(CATEGORIES).map((cat) =>
-    new ButtonBuilder()
-      .setCustomId(`roles:category:${cat.key}`)
-      .setLabel(cat.buttonLabel)
-      .setEmoji(cat.buttonEmoji)
-      .setStyle(cat.buttonStyle)
-  );
+  const buttons = Object.entries(CATEGORIES).map(([key, cat]) => {
+    const btn = new ButtonBuilder()
+      .setCustomId(`roles:category:${key}`)
+      .setLabel(cat.label)
+      .setStyle(cat.buttonStyle ?? ButtonStyle.Primary);
+    if (isValidEmoji(cat.buttonEmoji)) btn.setEmoji(cat.buttonEmoji);
+    return btn;
+  });
   return new ActionRowBuilder().addComponents(buttons);
 }
 
@@ -202,7 +198,7 @@ function buildCategoryButtonRows(categoryKey, member) {
 async function sendCategoryMenu(interaction, categoryKey, isUpdate) {
   const category = CATEGORIES[categoryKey];
   const rows = buildCategoryButtonRows(categoryKey, interaction.member);
-  const payload = { content: category.prompt, components: rows, flags: MessageFlags.Ephemeral };
+  const payload = { content: categoryPrompt(category.activityNoun), components: rows, flags: MessageFlags.Ephemeral };
 
   if (isUpdate) {
     await interaction.update(payload);

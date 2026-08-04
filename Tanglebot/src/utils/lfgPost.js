@@ -261,7 +261,7 @@ async function handleDescriptionModalSubmit(interaction) {
   activeGroups.set(groupId, group);
 
   const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, 'open', 'lfgpostgroup');
+  const row = buildGroupRow(groupId, 'open');
 
   // Auto-apply a matching forum tag if one exists with the same name as the activity (e.g. "Yama" — the base name, not the "LFG-" prefixed role).
   // Entirely optional — skipped if none matches.
@@ -411,7 +411,7 @@ async function handleJoinButton(interaction, groupId) {
   }
 
   const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, group.status, 'lfgpostgroup');
+  const row = buildGroupRow(groupId, group.status);
 
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
   await interaction.followUp({ content: '✅ You joined the group!', flags: MessageFlags.Ephemeral });
@@ -445,7 +445,7 @@ async function handleLeaveButton(interaction, groupId) {
   }
 
   const embed = buildGroupEmbed(group);
-  const row = buildGroupRow(groupId, group.status, 'lfgpostgroup');
+  const row = buildGroupRow(groupId, group.status);
   if (!(await updateGroupMessage(interaction, group, embed, row))) return;
   await interaction.followUp({ content: 'You left the group.', flags: MessageFlags.Ephemeral });
 

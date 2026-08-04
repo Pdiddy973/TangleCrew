@@ -7,10 +7,9 @@ const {
 const { CATEGORIES, emojiMarkup } = require('./roleMenu');
 
 // Top-level accordion categories for the /lfg-post dropdown, derived from roleMenu.js's CATEGORIES.
-// dropdownLabel overrides buttonLabel for shorter dropdown text; omit it to reuse buttonLabel.
-const CATEGORY_OPTIONS = Object.values(CATEGORIES).map((c) => ({
-  key: c.key,
-  label: c.dropdownLabel ?? c.buttonLabel,
+const CATEGORY_OPTIONS = Object.entries(CATEGORIES).map(([key, c]) => ({
+  key,
+  label: c.label,
 }));
 
 function findCategoryOption(key) {
@@ -100,18 +99,21 @@ function resolveGroupColor(group) {
 // Anyone can Join/Leave. Disband is limited to group members or Coordinator/Owner staff
 // (see canDisbandGroup in lfgPost.js).
 // Closed groups reopen automatically the moment someone leaves and frees up a spot.
-function buildGroupRow(groupId, status, prefix) {
+// customId prefix for these buttons — handleLfgPostGroupButtonInteraction in lfgPost.js parses it back out.
+const GROUP_BUTTON_PREFIX = 'lfgpostgroup';
+
+function buildGroupRow(groupId, status) {
   if (status === 'open') {
     const join = new ButtonBuilder()
-      .setCustomId(`${prefix}:join:${groupId}`)
+      .setCustomId(`${GROUP_BUTTON_PREFIX}:join:${groupId}`)
       .setLabel('Join Group')
       .setStyle(ButtonStyle.Success);
     const leave = new ButtonBuilder()
-      .setCustomId(`${prefix}:leave:${groupId}`)
+      .setCustomId(`${GROUP_BUTTON_PREFIX}:leave:${groupId}`)
       .setLabel('Leave Group')
       .setStyle(ButtonStyle.Secondary);
     const disband = new ButtonBuilder()
-      .setCustomId(`${prefix}:disband:${groupId}`)
+      .setCustomId(`${GROUP_BUTTON_PREFIX}:disband:${groupId}`)
       .setLabel('Disband Group')
       .setStyle(ButtonStyle.Danger);
     return new ActionRowBuilder().addComponents(join, leave, disband);
@@ -119,7 +121,7 @@ function buildGroupRow(groupId, status, prefix) {
 
   // closed (full) — only leaving is offered; leaving auto-reopens the group
   const leave = new ButtonBuilder()
-    .setCustomId(`${prefix}:leave:${groupId}`)
+    .setCustomId(`${GROUP_BUTTON_PREFIX}:leave:${groupId}`)
     .setLabel('Leave Group')
     .setStyle(ButtonStyle.Secondary);
   return new ActionRowBuilder().addComponents(leave);
