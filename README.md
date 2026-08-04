@@ -63,7 +63,7 @@ Posts (or updates) a leaderboard message ranking clan members by total donations
 1. Downloads the donation spreadsheet from the configured Google Sheets URL.
 2. Reads the `Name`, `DiscordID`, and `Donated` columns. Rows with the same Discord ID are merged together (their totals are summed) before ranking.
 3. Sorts donors by total donated, highest first.
-4. For each donor, assigns the highest donation tier role they qualify for, plus every tier role below it (tiers stack — a Zenyte donor also keeps Gold and Diamond). Roles for tiers no longer met are removed.
+4. For each donor, assigns the highest donation tier role they qualify for, plus every tier role below it (tiers stack — a Zenyte donor also keeps Onyx, Dragonstone, Diamond, and Ruby). Roles for tiers no longer met are removed.
 5. Builds a leaderboard message with a 💰 "Donation High Scores" header, a total donated line, and one line per donor with their tier emoji, mention, and full donated total (e.g. `150,000,000`). The top donor's name is shown enlarged.
 6. Posts the leaderboard to the configured channel, or edits the existing leaderboard message(s) in place on subsequent runs (no duplicates). If the leaderboard is too long for one message, it's split across multiple messages, which are also kept in sync on later runs. If the previously tracked message(s) can't be found (e.g. deleted, or the bot's local state was reset), it falls back to scanning the channel's recent history for its own last leaderboard post(s) and edits those instead of posting duplicates.
 7. Replies with a summary of role changes, including a "New roles granted" list naming each member who reached a new donation tier this run.
@@ -76,9 +76,9 @@ Restricted to users with the **Templar** role.
 2. Share the sheet: **Share → Anyone with the link → Viewer**.
 3. Set `DONATIONS_SHEET_URL` to the sheet's URL (any Google Sheets link format works — edit, share, or export links are all normalised automatically).
 4. Set `DONATIONS_CHANNEL_ID` to the channel where the leaderboard should be posted.
-5. Optionally set `DONATION_GOLD_THRESHOLD`, `DONATION_DIAMOND_THRESHOLD`, and `DONATION_ZENYTE_THRESHOLD` (defaults: 75M / 150M / 300M).
-6. Optionally set `DONATION_GOLD_ROLE_ID`, `DONATION_DIAMOND_ROLE_ID`, and `DONATION_ZENYTE_ROLE_ID` to have the bot manage tier roles. Leave a tier's role ID blank to skip role management for that tier.
-7. Optionally set `DONATION_EMOJI_GOLD`, `DONATION_EMOJI_DIAMOND`, `DONATION_EMOJI_ZENYTE`, and `DONATION_EMOJI_COINS` to custom emoji IDs for the tier badges and the total donated line.
+5. Optionally set `DONATION_RUBY_THRESHOLD`, `DONATION_DIAMOND_THRESHOLD`, `DONATION_DRAGONSTONE_THRESHOLD`, `DONATION_ONYX_THRESHOLD`, and `DONATION_ZENYTE_THRESHOLD` (defaults: 75M / 150M / 300M / 600M / 1B).
+6. Optionally set `DONATION_RUBY_ROLE_ID`, `DONATION_DIAMOND_ROLE_ID`, `DONATION_DRAGONSTONE_ROLE_ID`, `DONATION_ONYX_ROLE_ID`, and `DONATION_ZENYTE_ROLE_ID` to have the bot manage tier roles. Leave a tier's role ID blank to skip role management for that tier.
+7. Optionally set `DONATION_EMOJI_RUBY`, `DONATION_EMOJI_DIAMOND`, `DONATION_EMOJI_DRAGONSTONE`, `DONATION_EMOJI_ONYX`, `DONATION_EMOJI_ZENYTE`, and `DONATION_EMOJI_COINS` to custom emoji IDs for the tier badges and the total donated line.
 
 > **Note:** For role management to work, the bot needs the **Manage Roles** permission and its highest role must be positioned **above** the donation tier roles in Server Settings → Roles.
 

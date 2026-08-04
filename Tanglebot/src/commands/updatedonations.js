@@ -10,21 +10,33 @@ const TEMPLAR_ROLE_ID = process.env.TEMPLAR_ROLE_ID;
 const DONATION_TIERS = [
   {
     name:      'Zenyte',
-    threshold: parseInt(process.env.DONATION_ZENYTE_THRESHOLD  ?? '300000000', 10),
+    threshold: parseInt(process.env.DONATION_ZENYTE_THRESHOLD     ?? '1000000000', 10),
     roleEnv:   'DONATION_ZENYTE_ROLE_ID',
     emojiEnv:  'DONATION_EMOJI_ZENYTE',
   },
   {
+    name:      'Onyx',
+    threshold: parseInt(process.env.DONATION_ONYX_THRESHOLD       ??  '600000000', 10),
+    roleEnv:   'DONATION_ONYX_ROLE_ID',
+    emojiEnv:  'DONATION_EMOJI_ONYX',
+  },
+  {
+    name:      'Dragonstone',
+    threshold: parseInt(process.env.DONATION_DRAGONSTONE_THRESHOLD ?? '300000000', 10),
+    roleEnv:   'DONATION_DRAGONSTONE_ROLE_ID',
+    emojiEnv:  'DONATION_EMOJI_DRAGONSTONE',
+  },
+  {
     name:      'Diamond',
-    threshold: parseInt(process.env.DONATION_DIAMOND_THRESHOLD ?? '150000000', 10),
+    threshold: parseInt(process.env.DONATION_DIAMOND_THRESHOLD    ?? '150000000', 10),
     roleEnv:   'DONATION_DIAMOND_ROLE_ID',
     emojiEnv:  'DONATION_EMOJI_DIAMOND',
   },
   {
-    name:      'Gold',
-    threshold: parseInt(process.env.DONATION_GOLD_THRESHOLD    ??  '75000000', 10),
-    roleEnv:   'DONATION_GOLD_ROLE_ID',
-    emojiEnv:  'DONATION_EMOJI_GOLD',
+    name:      'Ruby',
+    threshold: parseInt(process.env.DONATION_RUBY_THRESHOLD       ??   '75000000', 10),
+    roleEnv:   'DONATION_RUBY_ROLE_ID',
+    emojiEnv:  'DONATION_EMOJI_RUBY',
   },
 ];
 
