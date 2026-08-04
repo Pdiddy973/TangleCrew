@@ -130,6 +130,27 @@ function buildLine(entry) {
 
 const LEADERBOARD_HEADER = `# ${COINS_EMOJI} Donation High Scores ${COINS_EMOJI}`;
 
+// Appends a header + list of lines to a summary, truncating the list (rather
+// than the whole reply) so we stay under Discord's 2000-char message limit
+// even when a large batch of members changed in one run.
+function appendTruncatedList(base, header, lines) {
+  if (!lines.length) return base;
+
+  let body = lines.join('\n');
+  if ((base + header + body).length > 1900) {
+    let shown = 0;
+    let truncated = '';
+    for (const line of lines) {
+      if ((base + header + truncated + line).length > 1850) break;
+      truncated += (truncated ? '\n' : '') + line;
+      shown++;
+    }
+    body = `${truncated}\n…and ${lines.length - shown} more`;
+  }
+
+  return base + header + body;
+}
+
 // Fallback for when the stored message ID(s) are stale (message deleted,
 // data file reset by a redeploy, etc). Scans recent channel history for the
 // bot's own previous leaderboard post(s) so we can still edit in place
@@ -189,6 +210,18 @@ module.exports = {
       }
       const entries = [...merged.values()].sort((a, b) => b.donated - a.donated);
       console.log(`[updatedonations] ${raw.length} rows → ${entries.length} unique donor(s) after dedup.`);
+
+      // ── 1b. Diff against totals from the last run to see who donated since ─
+      // Skip on the very first run (no prior totals) so we don't report every
+      // existing donor's full total as a fresh "addition".
+      const prevTotals = readJson('donations_totals.json');
+      const hasPrevTotals = Object.keys(prevTotals).length > 0;
+      const contributions = hasPrevTotals
+        ? entries
+            .map(entry => ({ discordId: entry.discordId, delta: entry.donated - (prevTotals[entry.discordId] ?? 0) }))
+            .filter(c => c.delta > 0)
+            .sort((a, b) => b.delta - a.delta)
+        : [];
 
       // ── 2. Cache guild members so we can look them up by Discord ID ────────
       const guild = interaction.guild;
@@ -324,34 +357,30 @@ module.exports = {
       }
 
       writeJson('donations_message.json', { messageIds: newIds });
+
+      const newTotals = {};
+      for (const entry of entries) newTotals[entry.discordId] = entry.donated;
+      writeJson('donations_totals.json', newTotals);
+
       console.log('[updatedonations] Done.');
 
-      let summary =
-        `Leaderboard posted to <#${channelId}>.\n` +
-        `Roles updated: **+${assigned}** assigned, **-${removed}** removed.`;
+      let summary = `Leaderboard posted to <#${channelId}>.`;
 
-      if (upgrades.length) {
-        const lines = upgrades.map(u =>
-          `${tierEmoji(u.tier)} <@${u.discordId}> → **${u.tier.name}**`.trim()
-        );
+      summary = appendTruncatedList(
+        summary,
+        '\n\nDonations added this update:\n',
+        contributions.map(c => `<@${c.discordId}> — +${formatGP(c.delta)}`)
+      );
 
-        // Keep the reply under Discord's 2000-char limit even if a large
-        // batch of members leveled up in one run.
-        const header = '\n\nNew roles granted:\n';
-        let body = lines.join('\n');
-        if ((summary + header + body).length > 1900) {
-          let shown = 0;
-          let truncated = '';
-          for (const line of lines) {
-            if ((summary + header + truncated + line).length > 1850) break;
-            truncated += (truncated ? '\n' : '') + line;
-            shown++;
-          }
-          body = `${truncated}\n…and ${lines.length - shown} more`;
-        }
-
-        summary += `${header}${body}`;
+      if (assigned > 0 || removed > 0) {
+        summary += `\n\nRoles updated: **+${assigned}** assigned, **-${removed}** removed.`;
       }
+
+      summary = appendTruncatedList(
+        summary,
+        '\n\nNew roles granted:\n',
+        upgrades.map(u => `${tierEmoji(u.tier)} <@${u.discordId}> → **${u.tier.name}**`.trim())
+      );
 
       await interaction.editReply(summary);
 
