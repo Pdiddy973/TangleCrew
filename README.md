@@ -1,4 +1,4 @@
-![Tangle Crew Banner](images/TCBanner.png)
+![Tangle Crew Banner](assets/images/TCBanner.png)
 
 # Tanglebot
 
