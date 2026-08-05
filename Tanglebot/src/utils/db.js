@@ -15,4 +15,11 @@ function writeJson(filename, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
 }
 
-module.exports = { readJson, writeJson };
+// Shared text-truncation helper — anything displayed back to Discord (embed fields/values,
+// message content) that could exceed a length cap needs this.
+function truncate(text, max) {
+  if (!text) return text;
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+module.exports = { readJson, writeJson, truncate };
