@@ -20,9 +20,14 @@ const EMBED_COLOR = 0x006400;
 // Thin rule separating a category's name from its activity list — see buildActivitiesEmbed.
 const FIELD_DIVIDER = '─'.repeat(20);
 
+// Pulled from the repo's master branch (not a pinned commit) so pushing a new gif there
+// updates the embed automatically — no redeploy or code change needed.
+const HOW_TO_GIF_URL = 'https://raw.githubusercontent.com/Pdiddy973/TangleCrew/master/assets/lfg-tour.gif';
+
 function buildInstructionsEmbed() {
   return new EmbedBuilder()
     .setTitle(START_POST_TITLE)
+    .setImage(HOW_TO_GIF_URL)
     .setDescription(
       [
         'Use this forum to find, or start, groups for OSRS bosses, raids, and minigames.',
@@ -32,17 +37,7 @@ function buildInstructionsEmbed() {
         '• `/lfg-roles` — opt in/out of ping roles for specific activities, so you get notified when a group forms.',
         '• `/lfg-suggestion` — suggest a new activity, or an edit to an existing one.',
         '',
-        '**Using a Group Post**',
-        '• 🟢 **Join Group** — joins if there\'s an open spot, otherwise adds you to the queue.',
-        '• 🔴 **Leave Group** — leaves the group, or the queue.',
-        '• 🔵 **Start Now** — group members (or staff) can start the group before its scheduled time.',
-        '• ⚠️ **Disband Group** — group members (or staff) can close the post (60s grace period to cancel).',
-        '',
-        '**How the Queue Works**',
-        '• **Join Group** on a full group queues you instead — your position shows in the post.',
-        '• A freed spot pings whoever\'s waited longest: **Accept Spot** or **Decline Spot**, 5 minutes to respond.',
-        '• No response or Decline drops you, and it moves to the next person in line.',
-        '• **Leave Group** removes you from the queue any time.',
+        '_See the gif below for how joining, leaving, and the queue work on a group post._',
       ].join('\n')
     )
     .setColor(EMBED_COLOR);
@@ -52,16 +47,16 @@ function buildInstructionsEmbed() {
 // surfacing on its own so a group closing (or getting pinged) on its own doesn't look like a bug.
 function buildAutomationEmbed() {
   return new EmbedBuilder()
-    .setTitle('⏱️ Automation & Timers')
+    .setTitle('⏱️ Automations')
     .setDescription(
       [
         'A few things happen on their own, without anyone clicking a button:',
         '',
-        '• **Empty groups auto-close** — if everyone leaves, the post closes automatically 15 minutes later unless someone rejoins.',
-        '• **Keep-alive checks** — every 2 hours, active groups get asked "is this still active?" If nobody clicks **Still Here** within 10 minutes, the group closes automatically, same as Disband.',
-        '• **Queue offers expire** — a freed spot is only held 5 minutes before it moves to the next person in line.',
-        '• **Disband has a grace period** — clicking **Disband Group** gives everyone 60 seconds to **Cancel Disband** before the post actually closes.',
-        '• **The post tidies itself up** — join/leave notices and other updates replace each other automatically so the thread doesn\'t fill up with old messages.',
+        '• **Empty groups auto-close** after 15 minutes.',
+        '• **Keep-alive checks** every 2 hours — no response in 10 minutes closes the group.',
+        '• **Queue offers expire** after 5 minutes.',
+        '• **Disband has a 60s grace period** to cancel.',
+        '• **The post tidies itself up** — old notices get replaced automatically.',
       ].join('\n')
     )
     .setColor(EMBED_COLOR);
