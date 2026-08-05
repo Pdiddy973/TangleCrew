@@ -22,8 +22,8 @@ const ADMIN_LOG_ALERT_COLOR = 0xed4245;
 
 // Reports something to ADMIN_LOG_CHANNEL_ID as an embed. Silently skipped if unset.
 // fields is optional — pass named {name, value, inline} entries for structured details (e.g.
-// "Suggested By", "Changes") instead of cramming everything into description, matching the
-// fields-based embeds honeypot.js's admin alerts already use.
+// "Suggested By", "Changes") instead of cramming everything into description, matching the field-
+// based embeds honeypot.js's admin alerts already use.
 // color defaults to red (an alert); pass a different color for non-alert notices (e.g. suggestions).
 async function notifyAdminLog(client, title, description, fields = [], color = ADMIN_LOG_ALERT_COLOR) {
   const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
@@ -49,7 +49,7 @@ async function notifyAdminLog(client, title, description, fields = [], color = A
 function replyEphemeral(interaction, content) {
   return interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
-// autoDelete removes the follow-up again after MENU_MESSAGE_LIFETIME_MS — for one-off action
+// autoDelete removes the follow-up again after MENU_MESSAGE_LIFETIME_MS — for one-off
 // confirmations ("You joined the group!") that don't need to stick around once read.
 function followUpEphemeral(interaction, content, { autoDelete = false } = {}) {
   const promise = interaction.followUp({ content, flags: MessageFlags.Ephemeral });
@@ -66,24 +66,24 @@ function followUpEphemeral(interaction, content, { autoDelete = false } = {}) {
 }
 
 // Reports an issue to admin log, then replies to the user with an ephemeral, ⚠️-prefixed message.
-// Shared by every /lfg-roles failure path (role creation, role assignment, clearing roles) so the
-// pairing only needs to change in one place.
+// Shared by every /lfg-roles failure path (role creation, role assignment, clearing roles), so
+// the pairing only needs to change in one place.
 async function notifyAdminLogAndReply(interaction, title, adminMessage, userMessage) {
   await notifyAdminLog(interaction.client, title, adminMessage);
   return replyEphemeral(interaction, userMessage);
 }
 
-// Discord's "Unknown Message" (10008) and "Unknown Channel" (10003) — thrown when the message
-// or thread/channel was already gone (user dismissed it, auto-cleanup already fired, manually
-// deleted, etc.) before this call got to it. Covers both since callers delete/rename/update
-// either a reply message or a forum thread depending on which cleanup path hit them.
+// Discord's "Unknown Message" (10008) and "Unknown Channel" (10003) — thrown when the message or
+// thread/channel was already gone (dismissed, auto-cleaned, manually deleted, etc.) before this
+// call got to it. Covers both since callers delete/rename/update either a reply message or a
+// forum thread depending on which cleanup path hit them.
 const ALREADY_GONE_ERROR_CODES = new Set([10003, 10008]);
 function isAlreadyGoneError(err) {
   return ALREADY_GONE_ERROR_CODES.has(err?.code);
 }
 
-// Deletes interaction's reply after delayMs. An already-gone reply is expected (the user
-// dismissed it, or another cleanup already deleted it) and isn't logged; anything else is a real error.
+// Deletes interaction's reply after delayMs. An already-gone reply is expected — dismissed by the
+// user, or already deleted by another cleanup — and isn't logged; anything else is a real error.
 function scheduleReplyCleanup(interaction, delayMs, logLabel) {
   setTimeout(() => {
     interaction.deleteReply().catch((err) => {
@@ -112,6 +112,11 @@ function sizeRangeWithMass(max) {
   return options;
 }
 
+// Builds a size-options list with exactly one choice — for activities that need an exact player count
+function sizeFixed(n) {
+  return [{ value: String(n), label: `${n} Players (Fixed)` }];
+}
+
 // Derives a role's stable identifier (used in customIds and select-menu values) from its
 // display label, e.g. "Royal Titans" -> "royal_titans", "Vet'ion" -> "vetion".
 function slugify(label) {
@@ -124,9 +129,9 @@ function slugify(label) {
 
 // ---- Category definitions ----
 // Feeds /lfg-roles (buttons) and the /lfg-post Category -> Activity accordion.
-// Missing roles are auto-created as "LFG-<label>" the first time they're needed (see ensureRoleExists below).
-// Rename any pre-existing plain-named role to add the "LFG-" prefix so it's reused instead of duplicated.
-// label doubles as the exact Discord role name, so spell it the way the role should read (e.g. "Royal Titans", not "Titans").
+// Missing roles are auto-created as "LFG-<label>" on first use (see ensureRoleExists below).
+// Rename any pre-existing plain-named role to add the "LFG-" prefix so it's reused, not duplicated.
+// label doubles as the exact Discord role name — spell it how the role should read (e.g. "Royal Titans", not "Titans").
 //
 // ---- Copy/paste template ----
 // New role:
@@ -148,48 +153,49 @@ const CATEGORIES = {
     label: 'Bosses',
     buttonEmoji: '1534226736361902170',
     roles: [
-      { label: 'Yama', emoji: '1381816093336801340', color: '#8B0000', sizeOptions: sizeRange(2) },
-      { label: 'Nightmare', emoji: '1381713659486539877', color: '#6B2470', sizeOptions: sizeRangeWithMass(5) },
-      { label: 'Royal Titans', emoji: '1381713565261500426', color: '#6B4C9A', sizeOptions: sizeRange(2) },
-      { label: 'Hueycoatl', emoji: '1381713619120685196', color: '#1B7340', sizeOptions: sizeRangeWithMass(5) },
-      { label: 'DKS', emoji: '1381713656861036716', color: '#2C7873', sizeOptions: sizeRange(3) },
-      { label: 'Scurrius', emoji: '1381714078996893717', color: '#7B5C3E', sizeOptions: sizeRangeWithMass(5) },
-      { label: 'Corp', emoji: '1381713935560085684', color: '#C77DBB', sizeOptions: sizeRangeWithMass(10) },
-      { label: 'Nex', emoji: '1381713664381550794', color: '#241B36', sizeOptions: sizeRangeWithMass(5) },
-      { label: 'Zilyana', emoji: '1381714082234761317', color: '#C9A227', sizeOptions: sizeRange(5) },
-      { label: 'Graardor', emoji: '1381713936801464331', color: '#B5651D', sizeOptions: sizeRange(5) },
-      { label: 'Kril', emoji: '1381713940374884544', color: '#4B1113', sizeOptions: sizeRange(5) },
-      { label: 'Kree', emoji: '1381713939301404762', color: '#7FA8C9', sizeOptions: sizeRange(5) },
-      { label: 'Callisto', emoji: '1381713566226186380', color: '#4A2E1A', sizeOptions: sizeRangeWithMass(5) },
-      { label: 'Venenatis', emoji: '1381728681327726593', color: '#4A3B7A', sizeOptions: sizeRangeWithMass(5) },
-      { label: 'Vet\'ion', emoji: '1381816089486430410', color: '#1F6FB2', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Yama', emoji: '1534395643416543282', color: '#8B0000', sizeOptions: sizeRange(2) },
+      { label: 'Nightmare', emoji: '1534395696201863198', color: '#6B2470', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Royal Titans', emoji: '1534395741282369658', color: '#6B4C9A', sizeOptions: sizeRange(2) },
+      { label: 'Hueycoatl', emoji: '1534395712379293918', color: '#1B7340', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'DKS', emoji: '1534395732038258718', color: '#2C7873', sizeOptions: sizeRange(3) },
+      { label: 'Scurrius', emoji: '1534395671543681065', color: '#7B5C3E', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Corp', emoji: '1534395728116580502', color: '#C77DBB', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Nex', emoji: '1534395688060719104', color: '#241B36', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Zilyana', emoji: '1534395640388386836', color: '#C9A227', sizeOptions: sizeRange(5) },
+      { label: 'Graardor', emoji: '1534395722609201304', color: '#B5651D', sizeOptions: sizeRange(5) },
+      { label: 'Kril', emoji: '1534395702271021236', color: '#4B1113', sizeOptions: sizeRange(5) },
+      { label: 'Kree', emoji: '1534395703843880990', color: '#7FA8C9', sizeOptions: sizeRange(5) },
+      { label: 'Callisto', emoji: '1534395737389924544', color: '#4A2E1A', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Venenatis', emoji: '1534395655630360596', color: '#4A3B7A', sizeOptions: sizeRangeWithMass(5) },
+      { label: 'Vet\'ion', emoji: '1534395654502219918', color: '#1F6FB2', sizeOptions: sizeRangeWithMass(5) },
     ],
   },
   raids: {
     label: 'Raids',
     buttonEmoji: '1534226735074250842',
     roles: [
-      { label: 'CoX', emoji: '1381713947534819418', color: '#17A398', sizeOptions: sizeRangeWithMass(7) },
-      { label: 'ToB', emoji: '1381713627568144425', color: '#7A0C0C', sizeOptions: sizeRange(5) },
-      { label: 'ToA', emoji: '1381728693445066862', color: '#D2A679', sizeOptions: sizeRange(8) },
+      { label: 'CoX', emoji: '1534395684277715005', color: '#17A398', sizeOptions: sizeRangeWithMass(7) },
+      { label: 'ToB', emoji: '1534395699213631569', color: '#7A0C0C', sizeOptions: sizeRange(5) },
+      { label: 'ToA', emoji: '1534395660349079663', color: '#D2A679', sizeOptions: sizeRange(8) },
     ],
   },
   minigames: {
     label: 'Minigames',
     buttonEmoji: '1534226733413171420',
     roles: [
-      { label: 'Tempoross', emoji: '1381728691700371599', color: '#1B6CA8', sizeOptions: sizeRangeWithMass(10) },
-      { label: 'Zalcano', emoji: '1381728687103283321', color: '#5A6B57', sizeOptions: sizeRangeWithMass(10) },
-      { label: 'Wintertodt', emoji: '1381977814588330075', color: '#9FD3E8', sizeOptions: sizeRangeWithMass(10) },
-      { label: 'GOTR', emoji: '1381713553475633226', color: '#6A3FA0', sizeOptions: sizeRangeWithMass(10) },
-      { label: 'Soul Wars', emoji: '1011956473615630396', color: '#6A5ACD', sizeOptions: sizeRangeWithMass(10) },
-      { label: 'Castle Wars', emoji: '1382355517363585065', color: '#7A7267', sizeOptions: sizeRangeWithMass(10) },
-      { label: 'Barb Assault', emoji: '1381713942979543070', color: '#A0522D', sizeOptions: sizeRange(5) },
+      { label: 'Tempoross', emoji: '1534395661288738946', color: '#1B6CA8', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Zalcano', emoji: '1534395666598461551', color: '#5A6B57', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Wintertodt', emoji: '1534395680695779460', color: '#9FD3E8', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'GOTR', emoji: '1534395880935788576', color: '#6A3FA0', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Soul Wars', emoji: '1534395893443203232', color: '#6A5ACD', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Castle Wars', emoji: '1534395875965665341', color: '#7A7267', sizeOptions: sizeRangeWithMass(10) },
+      { label: 'Barb Assault', emoji: '1534395870638772345', color: '#A0522D', sizeOptions: sizeFixed(5) },
     ],
   },
 };
 
-// Attach each role's derived `value` identifier and each category's derived `activityNoun` now, so the rest of the codebase can keep reading them without knowing they're computed.
+// Attaches each role's derived `value` and each category's derived `activityNoun` now, so the
+// rest of the codebase can read them without knowing they're computed.
 for (const category of Object.values(CATEGORIES)) {
   category.activityNoun = category.label.toLowerCase();
   for (const role of category.roles) {
@@ -215,10 +221,7 @@ function categoryPrompt(activityNoun) {
 }
 
 function buildMenuEmbed() {
-  const categoryLabels = Object.values(CATEGORIES).map((cat) => {
-    const emoji = emojiMarkup(cat.buttonEmoji);
-    return `**${emoji ? `${emoji} ` : ''}${cat.label}**`;
-  });
+  const categoryLabels = Object.values(CATEGORIES).map((cat) => `**${emojiLabel(cat.buttonEmoji, cat.label)}**`);
 
   return new EmbedBuilder()
     .setTitle('LFG Roles')
@@ -256,8 +259,8 @@ function buildClearAllRow() {
 
 function buildCategoryButtonRows(categoryKey, member) {
   const category = CATEGORIES[categoryKey];
-  // One pass over the member's own (small) role list instead of scanning the whole guild's role
-  // cache per category role (memberHasRoleName's old approach, up to 15x per render here).
+  // One pass over the member's own (small) role list instead of scanning the whole guild's role cache
+  // per category role (memberHasRoleName's old approach, up to 15x per render here).
   const memberRoleNames = new Set(member.roles.cache.filter((r) => r.name.startsWith(ROLE_PREFIX)).map((r) => r.name));
 
   const buttons = category.roles.map((r) => {
@@ -402,9 +405,8 @@ function isSnowflakeEmoji(emoji) {
 }
 
 // Accepts either a custom emoji's snowflake ID or a plain unicode emoji character.
-// Placeholders like "PUT_EMOJI_ID_HERE" are plain ASCII text (not digits, not a real
-// emoji glyph) so they fall through and get rejected here instead of silently failing
-// the interaction when sent to Discord.
+// Placeholders like "PUT_EMOJI_ID_HERE" are plain ASCII text (not digits, not a real emoji glyph),
+// so they fall through and get rejected here instead of silently failing when sent to Discord.
 function isValidEmoji(emoji) {
   if (typeof emoji !== 'string' || emoji.length === 0) return false;
   return isSnowflakeEmoji(emoji) || /[^\x00-\x7F]/.test(emoji);
@@ -434,6 +436,12 @@ function emojiMarkup(emoji) {
   return isSnowflakeEmoji(emoji) ? `<:_:${emoji}>` : emoji;
 }
 
+// "<emoji> Label", or just "Label" if there's no valid emoji to show.
+function emojiLabel(emoji, label) {
+  const markup = emojiMarkup(emoji);
+  return markup ? `${markup} ${label}` : label;
+}
+
 function chunkIntoRows(items, size) {
   const rows = [];
   for (let i = 0; i < items.length; i += size) {
@@ -458,6 +466,7 @@ module.exports = {
   replyEphemeral,
   followUpEphemeral,
   emojiMarkup,
+  emojiLabel,
   isValidEmoji,
   isValidColor,
   normalizeEmojiInput,

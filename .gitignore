@@ -7,3 +7,4 @@ Thumbs.db
 desktop.ini
 .env
 node_modules/
+/Tanglebot/data

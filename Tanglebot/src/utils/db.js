@@ -15,4 +15,18 @@ function writeJson(filename, data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
 }
 
-module.exports = { readJson, writeJson };
+// Shared text-truncation helper — anything displayed back to Discord (embed fields/values,
+// message content) that could exceed a length cap needs this.
+function truncate(text, max) {
+  if (!text) return text;
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+// True if `member` has any of the given role IDs — used to gate staff/admin-only actions.
+// Falsy entries in roleIds (an unset env var) are ignored rather than matched.
+function hasAnyRole(member, roleIds) {
+  if (!member) return false;
+  return roleIds.filter(Boolean).some((roleId) => member.roles?.cache?.has(roleId));
+}
+
+module.exports = { readJson, writeJson, truncate, hasAnyRole };

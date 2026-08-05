@@ -31,8 +31,8 @@ const SUGGESTION_SENT_MESSAGE = '✅ Thanks! Your suggestion has been sent to th
 // userId -> { mode: 'new' | 'edit', category, activity }
 const sessions = new Map();
 
-// The select-menu steps guard against a missing/expired session by aborting in place (the user
-// is still looking at the previous ephemeral message, so update it rather than send a new one).
+// The select-menu steps guard against a missing/expired session by aborting in place — the user's
+// still looking at the previous ephemeral message, so update it rather than send a new one.
 function abortSessionExpired(interaction) {
   return interaction.update({ content: SESSION_EXPIRED_MESSAGE, components: [] });
 }
@@ -55,8 +55,8 @@ function parseSuggestedSize(text) {
 
 // Falls back to a placeholder (rather than throwing) when the suggester's size text isn't a
 // parseable number — e.g. a typo like "olmpet". Matches PUT_EMOJI_ID_HERE's approach: a valid,
-// copy-pasteable placeholder with the original text kept alongside it, not a bare `sizeRange(?)`
-// call (which isn't valid JS on its own and would break pasting the line as-is).
+// copy-pasteable placeholder with the original text kept alongside it, not a bare `sizeRange(?)` call
+// (which isn't valid JS on its own and would break pasting the line as-is).
 function resolveSizeCode(size, sizeText) {
   return size ? size.code : `'PUT_SIZE_HERE' /* suggested: "${sizeText}" */`;
 }
@@ -226,6 +226,16 @@ function unresolvedFields(color, emoji, size) {
   return flags;
 }
 
+// Shared tail for both submit handlers below: log it, post it to admin log, clear the wizard
+// session, and confirm to the user. Only the log summary and admin-log title/description differ
+// between a new-activity suggestion and an edit-activity one.
+async function finalizeSuggestion(interaction, { logSummary, title, description, fields }) {
+  console.log(`[LFG] Suggestion submitted: ${logSummary}`);
+  await notifyAdminLog(interaction.client, title, description, fields, SUGGESTION_EMBED_COLOR);
+  sessions.delete(interaction.user.id);
+  return replyEphemeral(interaction, SUGGESTION_SENT_MESSAGE);
+}
+
 async function handleNewActivitySubmit(interaction) {
   const session = sessions.get(interaction.user.id);
   if (!session?.category) {
@@ -252,18 +262,12 @@ async function handleNewActivitySubmit(interaction) {
   if (flags.length) fields.push({ name: NEEDS_LOOK_FIELD_NAME, value: flags.join(', ') });
   if (reason) fields.push({ name: 'Notes', value: reason });
 
-  console.log(`[LFG] Suggestion submitted: new activity "${label}" (${categoryLabel}), by ${interaction.user.username}${flags.length ? ` [needs look: ${flags.join(', ')}]` : ''}`);
-
-  await notifyAdminLog(
-    interaction.client,
-    '💡 LFG Suggestion: New Activity',
-    `New activity suggested for **${categoryLabel}**.`,
+  return finalizeSuggestion(interaction, {
+    logSummary: `new activity "${label}" (${categoryLabel}), by ${interaction.user.username}${flags.length ? ` [needs look: ${flags.join(', ')}]` : ''}`,
+    title: '💡 LFG Suggestion: New Activity',
+    description: `New activity suggested for **${categoryLabel}**.`,
     fields,
-    SUGGESTION_EMBED_COLOR
-  );
-  sessions.delete(interaction.user.id);
-
-  return replyEphemeral(interaction, SUGGESTION_SENT_MESSAGE);
+  });
 }
 
 async function handleEditActivitySubmit(interaction) {
@@ -302,18 +306,12 @@ async function handleEditActivitySubmit(interaction) {
   if (flags.length) fields.push({ name: NEEDS_LOOK_FIELD_NAME, value: flags.join(', ') });
   if (reason) fields.push({ name: 'Notes', value: reason });
 
-  console.log(`[LFG] Suggestion submitted: edit ${categoryLabel} → ${activityOption.label} (${changes.length} change${changes.length === 1 ? '' : 's'}), by ${interaction.user.username}${flags.length ? ` [needs look: ${flags.join(', ')}]` : ''}`);
-
-  await notifyAdminLog(
-    interaction.client,
-    '💡 LFG Suggestion: Edit Activity',
-    `Suggested changes for **${categoryLabel} → ${activityOption.label}**.`,
+  return finalizeSuggestion(interaction, {
+    logSummary: `edit ${categoryLabel} → ${activityOption.label} (${changes.length} change${changes.length === 1 ? '' : 's'}), by ${interaction.user.username}${flags.length ? ` [needs look: ${flags.join(', ')}]` : ''}`,
+    title: '💡 LFG Suggestion: Edit Activity',
+    description: `Suggested changes for **${categoryLabel} → ${activityOption.label}**.`,
     fields,
-    SUGGESTION_EMBED_COLOR
-  );
-  sessions.delete(interaction.user.id);
-
-  return replyEphemeral(interaction, SUGGESTION_SENT_MESSAGE);
+  });
 }
 
 async function handleLfgSuggestionModalSubmit(interaction) {

@@ -41,10 +41,10 @@ function parseSizeCap(value) {
   return /^\d+$/.test(value) ? parseInt(value, 10) : Infinity;
 }
 
-// An offset from now (in minutes), not an absolute clock time — sidesteps timezone ambiguity
-// entirely, since "1 Hour from now" means the same thing to everyone. The epoch is resolved
-// fresh at post-creation time (resolveTimeEpoch), and Discord's <t:...> format auto-localizes
-// the posted embed to each viewer's own timezone and clock format.
+// An offset from now (in minutes), not an absolute clock time — sidesteps timezone ambiguity,
+// since "1 Hour from now" means the same thing to everyone. The epoch is resolved fresh at
+// post-creation time (resolveTimeEpoch), and Discord's <t:...> format auto-localizes the posted
+// embed to each viewer's own timezone and clock format.
 const TIME_OFFSET_OPTIONS = [
   { value: '0', label: 'Now' },
   { value: '15', label: '15 Min' },
@@ -61,9 +61,9 @@ function findTimeOption(value) {
   return TIME_OFFSET_OPTIONS.find((o) => o.value === value);
 }
 
-// Bucket edges for the post title's live countdown — hourly beyond an hour out, then 30/15/5
-// minutes as it gets close, then "Started". A finer scale than TIME_OFFSET_OPTIONS itself (which
-// has no 5-minute pick), but reuses its hourly labels rather than redeclaring them.
+// Bucket edges for the post title's live countdown — hourly beyond an hour out, then
+// 30/15/5 minutes as it gets close, then "Started". A finer scale than TIME_OFFSET_OPTIONS itself
+// (which has no 5-minute pick), but reuses its hourly labels rather than redeclaring them.
 const COUNTDOWN_BUCKETS = [
   { minutes: 5, label: '5 Min' },
   ...TIME_OFFSET_OPTIONS.filter((o) => parseInt(o.value, 10) >= 15).map((o) => ({ minutes: parseInt(o.value, 10), label: o.label })),
@@ -114,11 +114,12 @@ function resolveGroupColor(group) {
 
 // ---- Group post building blocks, used by lfgPost.js ----
 // status: 'open' | 'closed' (auto-closed once full) | 'disbanded'
-// Anyone can Join/Leave. Disband and Start Now are limited to group members or Coordinator/Owner
-// staff (see canManageGroup in lfgPost.js).
-// A closed (full) group doesn't reopen the instant someone leaves if people are queued — the
-// freed spot is offered to whoever's been waiting longest first (see advanceQueueOrReopen).
-// customId prefix for these buttons — handleLfgPostGroupButtonInteraction in lfgPost.js parses it back out.
+// Anyone can Join/Leave. Disband and Start Now are limited to group members or Coordinator/Owner staff
+// (see canManageGroup in lfgPost.js).
+// A closed (full) group doesn't reopen the instant someone leaves if people are queued — the freed
+// spot goes to whoever's been waiting longest first (see advanceQueueOrReopen).
+// customId prefix for these buttons — handleLfgPostGroupButtonInteraction in lfgPost.js parses it
+// back out.
 const GROUP_BUTTON_PREFIX = 'lfgpostgroup';
 
 // Lets the group start before its scheduled time (see handleStartNowButton in lfgPost.js) —
@@ -159,11 +160,11 @@ function buildGroupRow(groupId) {
   return new ActionRowBuilder().addComponents(join, leave, startNow, disband);
 }
 
-// Shown on the group's activity notice when a spot opens up and it's being held for the next
-// person in line (see advanceQueueOrReopen in lfgPost.js) — Accept joins them immediately,
-// Decline removes them from the queue entirely. Missing the response window isn't a Decline
-// though — see handleQueueOfferTimeout in lfgPost.js, which cycles a late person to the back of
-// the queue instead of dropping them, so there's no separate "rejoin" button to offer.
+// Shown on the group's activity notice when a spot opens up and is being held for whoever's next
+// in line (see advanceQueueOrReopen in lfgPost.js) — Accept joins them immediately, Decline
+// removes them from the queue entirely. Missing the response window isn't a Decline though — see
+// handleQueueOfferTimeout in lfgPost.js, which cycles a late person to the back of the queue
+// instead of dropping them, so there's no separate "rejoin" button to offer.
 function buildQueueOfferRow(groupId) {
   const accept = new ButtonBuilder()
     .setCustomId(`${GROUP_BUTTON_PREFIX}:queueaccept:${groupId}`)

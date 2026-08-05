@@ -13,6 +13,7 @@ const {
   handleLfgPostModalSubmit,
   handleLfgPostGroupButtonInteraction,
 } = require('../utils/lfgPost');
+const { ensureLfgStartPost } = require('../utils/lfgStartPage');
 const {
   handleLfgSuggestionSelectInteraction,
   handleLfgSuggestionModalSubmit,
@@ -77,6 +78,7 @@ function loadEvents(client) {
     }
 
     await sendHoneypotStartupMessage(client, honeypotConfig);
+    await ensureLfgStartPost(client);
   });
 
   client.on(Events.MessageCreate, async (message) => {
