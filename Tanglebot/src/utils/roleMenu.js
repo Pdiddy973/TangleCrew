@@ -6,8 +6,7 @@ const {
   MessageFlags,
 } = require('discord.js');
 
-// How long the ephemeral role menus stay open before auto-deleting.
-// Roles already assigned are unaffected — this only deletes the menu message.
+// How long the ephemeral role menus stay open before auto-deleting; already-assigned roles aren't affected.
 const MENU_MESSAGE_LIFETIME_MS = 60 * 1000;
 
 // Roles this system manages get this prefix (e.g. "LFG-Yama") so they're easy to spot in the role list.
@@ -44,19 +43,20 @@ async function notifyAdminLog(client, title, description, fields = [], color = A
   }
 }
 
-// Shorthand for the "just tell the user a short status" reply/follow-up shape repeated across
-// every LFG command, so {content, flags: Ephemeral} only needs to change in one place.
+// Shorthand for the ephemeral status reply shape, so {content, flags: Ephemeral} only needs to change in one place.
 function replyEphemeral(interaction, content) {
   return interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
-// autoDelete removes the follow-up again after MENU_MESSAGE_LIFETIME_MS — for one-off
-// confirmations ("You joined the group!") that don't need to stick around once read.
+
+// autoDelete removes the follow-up after MENU_MESSAGE_LIFETIME_MS, for confirmations that don't need to stick around.
 function followUpEphemeral(interaction, content, { autoDelete = false } = {}) {
   const promise = interaction.followUp({ content, flags: MessageFlags.Ephemeral });
   if (autoDelete) {
     promise.then((message) => {
       setTimeout(() => {
-        message.delete().catch((err) => {
+        // Not message.delete() — resolving message.channel needs the client's channel cache,
+        // which fails for a thread that's since fallen out of it. The webhook needs no channel lookup.
+        interaction.webhook.deleteMessage(message.id).catch((err) => {
           if (!isAlreadyGoneError(err)) console.error('Could not delete ephemeral follow-up:', err.message);
         });
       }, MENU_MESSAGE_LIFETIME_MS);
@@ -66,8 +66,7 @@ function followUpEphemeral(interaction, content, { autoDelete = false } = {}) {
 }
 
 // Reports an issue to admin log, then replies to the user with an ephemeral, ⚠️-prefixed message.
-// Shared by every /lfg-roles failure path (role creation, role assignment, clearing roles), so
-// the pairing only needs to change in one place.
+// Shared by every /lfg-roles failure path, so the pairing only needs to change in one place.
 async function notifyAdminLogAndReply(interaction, title, adminMessage, userMessage) {
   await notifyAdminLog(interaction.client, title, adminMessage);
   return replyEphemeral(interaction, userMessage);
@@ -75,15 +74,15 @@ async function notifyAdminLogAndReply(interaction, title, adminMessage, userMess
 
 // Discord's "Unknown Message" (10008) and "Unknown Channel" (10003) — thrown when the message or
 // thread/channel was already gone (dismissed, auto-cleaned, manually deleted, etc.) before this
-// call got to it. Covers both since callers delete/rename/update either a reply message or a
-// forum thread depending on which cleanup path hit them.
+// call got to it. Covers both since callers delete/rename/update either a reply message or
+// a forum thread, depending on which cleanup path hit them.
 const ALREADY_GONE_ERROR_CODES = new Set([10003, 10008]);
 function isAlreadyGoneError(err) {
   return ALREADY_GONE_ERROR_CODES.has(err?.code);
 }
 
-// Deletes interaction's reply after delayMs. An already-gone reply is expected — dismissed by the
-// user, or already deleted by another cleanup — and isn't logged; anything else is a real error.
+// Deletes interaction's reply after delayMs. An already-gone reply (dismissed, or already cleaned
+// up elsewhere) is expected and isn't logged; anything else is a real error.
 function scheduleReplyCleanup(interaction, delayMs, logLabel) {
   setTimeout(() => {
     interaction.deleteReply().catch((err) => {
@@ -117,8 +116,7 @@ function sizeFixed(n) {
   return [{ value: String(n), label: `${n} Players (Fixed)` }];
 }
 
-// Derives a role's stable identifier (used in customIds and select-menu values) from its
-// display label, e.g. "Royal Titans" -> "royal_titans", "Vet'ion" -> "vetion".
+// Derives a role's stable customId/value identifier from its display label, e.g. "Royal Titans" -> "royal_titans".
 function slugify(label) {
   return label
     .toLowerCase()
@@ -136,8 +134,8 @@ function slugify(label) {
 // ---- Copy/paste template ----
 // New role:
 //   { label: 'Display Name', emoji: 'PUT_EMOJI_ID_HERE', color: '#006400', sizeOptions: sizeRange(N) },
-// A missing/invalid color or emoji isn't defaulted — /lfg-post will refuse to post that
-// activity and alert ADMIN_LOG_CHANNEL_ID instead (see isValidColor/isValidEmoji below).
+// A missing/invalid color or emoji isn't defaulted — /lfg-post will refuse to post that activity
+// and alert ADMIN_LOG_CHANNEL_ID instead (see isValidColor/isValidEmoji below).
 //
 // New category:
 //   new_key: {
@@ -194,8 +192,7 @@ const CATEGORIES = {
   },
 };
 
-// Attaches each role's derived `value` and each category's derived `activityNoun` now, so the
-// rest of the codebase can read them without knowing they're computed.
+// Derives each role's `value` and each category's `activityNoun` now, so the rest of the codebase can just read them.
 for (const category of Object.values(CATEGORIES)) {
   category.activityNoun = category.label.toLowerCase();
   for (const role of category.roles) {
@@ -259,8 +256,8 @@ function buildClearAllRow() {
 
 function buildCategoryButtonRows(categoryKey, member) {
   const category = CATEGORIES[categoryKey];
-  // One pass over the member's own (small) role list instead of scanning the whole guild's role cache
-  // per category role (memberHasRoleName's old approach, up to 15x per render here).
+  // One pass over the member's small role list, not the whole guild's role cache per category role
+  // (the old approach — up to 15x per render).
   const memberRoleNames = new Set(member.roles.cache.filter((r) => r.name.startsWith(ROLE_PREFIX)).map((r) => r.name));
 
   const buttons = category.roles.map((r) => {
@@ -422,8 +419,7 @@ function normalizeEmojiInput(text) {
   return customEmojiMatch ? customEmojiMatch[1] : trimmed;
 }
 
-// A real color is a 6-digit hex string like "#006400" — rejects placeholders, empty
-// strings, and anything left unset.
+// A real color is a 6-digit hex string like "#006400" — rejects placeholders, empty strings, and anything left unset.
 function isValidColor(color) {
   return typeof color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(color);
 }

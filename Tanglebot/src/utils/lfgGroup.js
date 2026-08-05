@@ -41,10 +41,10 @@ function parseSizeCap(value) {
   return /^\d+$/.test(value) ? parseInt(value, 10) : Infinity;
 }
 
-// An offset from now (in minutes), not an absolute clock time — sidesteps timezone ambiguity,
-// since "1 Hour from now" means the same thing to everyone. The epoch is resolved fresh at
-// post-creation time (resolveTimeEpoch), and Discord's <t:...> format auto-localizes the posted
-// embed to each viewer's own timezone and clock format.
+// An offset from now (in minutes), not an absolute clock time — sidesteps timezone ambiguity, since
+// "1 Hour from now" means the same thing to everyone. The epoch is resolved fresh at
+// post-creation time (resolveTimeEpoch), and Discord's <t:...> format auto-localizes the
+// posted embed to each viewer's own timezone and clock format.
 const TIME_OFFSET_OPTIONS = [
   { value: '0', label: 'Now' },
   { value: '15', label: '15 Min' },
@@ -78,11 +78,9 @@ function describeStartCountdown(timeEpoch) {
   return `in ${bucket.label}`;
 }
 
-// Delay (ms) until describeStartCountdown's label would next change, so the post title is only
-// renamed exactly when the text needs updating instead of on a fixed poll interval. Returns null
-// once the start time has passed — the label just settles on "Started" and stops refreshing
-// (the post itself doesn't auto-close on this account; see EMPTY_GROUP_CLEANUP_DELAY_MS in
-// lfgPost.js — a group only closes from sitting empty, or from an explicit disband).
+// Delay (ms) until describeStartCountdown's label would next change, so the post title only
+// renames when the text needs updating, not on a fixed poll interval. Returns null once
+// the start time has passed — the label settles on "Started" and stops refreshing.
 function computeCountdownRefreshDelay(timeEpoch) {
   const minutesRemaining = Math.ceil((timeEpoch * 1000 - Date.now()) / 60000);
   if (minutesRemaining <= 0) return null;
@@ -97,34 +95,31 @@ function resolveTimeEpoch(offsetMinutesValue) {
   return Math.floor(Date.now() / 1000) + parseInt(offsetMinutesValue, 10) * 60;
 }
 
-// True only when every spot is actually occupied — not the same thing as status === 'closed',
-// which also covers "a spot freed up but it's being held for the queue" (see advanceQueueOrReopen
-// in lfgPost.js). During that reservation window there IS an open spot, just not a public one, so
-// it shouldn't read as full.
+// True only when every spot is actually occupied — not the same thing as status === 'closed', which
+// also covers "a spot freed up but it's being held for the queue" (see advanceQueueOrReopen
+// in lfgPost.js). During that reservation window there IS an open spot, just not a public one, so it
+// shouldn't read as full.
 function isGroupFull(group) {
   return group.sizeCap !== Infinity && group.members.size >= group.sizeCap;
 }
 
 // Full shows green regardless of activity color — a status signal, not branding. lfgPost.js's
-// notification embed uses the same color so they always match. group.color is validated before
-// the group is created (see lfgPost.js), so it's always set here.
+// notification embed uses the same color so they always match. group.color is validated
+// before the group is created (see lfgPost.js), so it's always set here.
 function resolveGroupColor(group) {
   return isGroupFull(group) ? 0x2ecc71 : group.color;
 }
 
 // ---- Group post building blocks, used by lfgPost.js ----
-// status: 'open' | 'closed' (auto-closed once full) | 'disbanded'
-// Anyone can Join/Leave. Disband and Start Now are limited to group members or Coordinator/Owner staff
-// (see canManageGroup in lfgPost.js).
-// A closed (full) group doesn't reopen the instant someone leaves if people are queued — the freed
-// spot goes to whoever's been waiting longest first (see advanceQueueOrReopen).
-// customId prefix for these buttons — handleLfgPostGroupButtonInteraction in lfgPost.js parses it
-// back out.
+// status: 'open' | 'closed' (auto-closed once full) | 'disbanded'. Anyone can Join/Leave; Disband
+// and Start Now are limited to group members or Coordinator/Owner staff (see canManageGroup).
+
+// customId prefix for these buttons — handleLfgPostGroupButtonInteraction in lfgPost.js parses it back out.
 const GROUP_BUTTON_PREFIX = 'lfgpostgroup';
 
 // Lets the group start before its scheduled time (see handleStartNowButton in lfgPost.js) —
-// shown regardless of open/closed status, since a full group waiting on its start time still
-// benefits from starting early just as much as one still recruiting.
+// shown regardless of open/closed status, since a full group waiting on its start time still benefits
+// from starting early just as much as one still recruiting.
 function buildStartNowButton(groupId) {
   return new ButtonBuilder()
     .setCustomId(`${GROUP_BUTTON_PREFIX}:startnow:${groupId}`)
@@ -133,8 +128,8 @@ function buildStartNowButton(groupId) {
 }
 
 // Join always uses this same button regardless of status — handleJoinButton in lfgPost.js decides
-// whether that means joining directly or joining the queue (see group.queue), so the label never
-// has to change out from under people.
+// whether that means joining directly or joining the queue (see group.queue), so the label
+// never has to change out from under people.
 function buildJoinButton(groupId) {
   return new ButtonBuilder()
     .setCustomId(`${GROUP_BUTTON_PREFIX}:join:${groupId}`)
@@ -142,9 +137,9 @@ function buildJoinButton(groupId) {
     .setStyle(ButtonStyle.Success);
 }
 
-// Disband is available regardless of open/closed status — a full (or queue-reserved) group is
-// still a group someone might need to shut down, not just a recruiting one. The row is otherwise
-// identical either way, so unlike buildGroupEmbed this doesn't need the group's status at all.
+// Disband is available regardless of open/closed status — a full (or queue-reserved) group is still
+// a group someone might need to shut down, not just a recruiting one. The row is otherwise identical
+// either way, so unlike buildGroupEmbed this doesn't need the group's status at all.
 function buildGroupRow(groupId) {
   const join = buildJoinButton(groupId);
   const startNow = buildStartNowButton(groupId);
@@ -160,10 +155,10 @@ function buildGroupRow(groupId) {
   return new ActionRowBuilder().addComponents(join, leave, startNow, disband);
 }
 
-// Shown on the group's activity notice when a spot opens up and is being held for whoever's next
-// in line (see advanceQueueOrReopen in lfgPost.js) — Accept joins them immediately, Decline
-// removes them from the queue entirely. Missing the response window isn't a Decline though — see
-// handleQueueOfferTimeout in lfgPost.js, which cycles a late person to the back of the queue
+// Shown on the group's activity notice when a spot opens up and is being held for
+// whoever's next in line (see advanceQueueOrReopen in lfgPost.js) — Accept joins them immediately,
+// Decline removes them from the queue entirely. Missing the response window isn't a Decline though —
+// see handleQueueOfferTimeout in lfgPost.js, which cycles a late person to the back of the queue
 // instead of dropping them, so there's no separate "rejoin" button to offer.
 function buildQueueOfferRow(groupId) {
   const accept = new ButtonBuilder()
@@ -187,8 +182,26 @@ function buildCancelDisbandRow(groupId) {
   return new ActionRowBuilder().addComponents(cancel);
 }
 
+// Shown on the periodic "is this group still active?" check (see runKeepAliveCheck in lfgPost.js) —
+// confirms the group is still in use and resets the 2-hour check timer, instead of letting it
+// silently auto-disband after the reply window.
+function buildKeepAliveRow(groupId) {
+  const stillHere = new ButtonBuilder()
+    .setCustomId(`${GROUP_BUTTON_PREFIX}:keepalive:${groupId}`)
+    .setLabel('Still Here')
+    .setStyle(ButtonStyle.Success);
+  return new ActionRowBuilder().addComponents(stillHere);
+}
+
+// "Mass" for an uncapped group, otherwise the numeric cap — shared by the embed and the main post's
+// content line (see buildMainPostContent in lfgPost.js) so they never disagree on how a
+// group's size reads.
+function formatCapacity(group) {
+  return group.sizeCap === Infinity ? 'Mass' : String(group.sizeCap);
+}
+
 function buildGroupEmbed(group) {
-  const capDisplay = group.sizeCap === Infinity ? 'Mass' : String(group.sizeCap);
+  const capDisplay = formatCapacity(group);
   const memberLines = [...group.members].map((id) => `<@${id}>`).join('\n');
 
   // group.emoji is validated before the group is created (see lfgPost.js), so it's always set here.
@@ -244,6 +257,8 @@ module.exports = {
   buildGroupRow,
   buildQueueOfferRow,
   buildCancelDisbandRow,
+  buildKeepAliveRow,
+  formatCapacity,
   makeGroupId,
   resolveGroupColor,
   isGroupFull,

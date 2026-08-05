@@ -14,7 +14,7 @@ const START_POST_TITLE = '📌 Start Here — How to Use LFG';
 const MAX_EMBED_FIELDS = 25;
 const MAX_FIELD_VALUE_LENGTH = 1024;
 
-// Shared accent color for both embeds, so they read as one post despite being built separately.
+// Shared accent color for all three embeds, so they read as one post despite being built separately.
 const EMBED_COLOR = 0x006400;
 
 // Thin rule separating a category's name from its activity list — see buildActivitiesEmbed.
@@ -48,6 +48,25 @@ function buildInstructionsEmbed() {
     .setColor(EMBED_COLOR);
 }
 
+// Covers the automatic/behind-the-scenes behavior that isn't a button someone clicks — worth
+// surfacing on its own so a group closing (or getting pinged) on its own doesn't look like a bug.
+function buildAutomationEmbed() {
+  return new EmbedBuilder()
+    .setTitle('⏱️ Automation & Timers')
+    .setDescription(
+      [
+        'A few things happen on their own, without anyone clicking a button:',
+        '',
+        '• **Empty groups auto-close** — if everyone leaves, the post closes automatically 15 minutes later unless someone rejoins.',
+        '• **Keep-alive checks** — every 2 hours, active groups get asked "is this still active?" If nobody clicks **Still Here** within 10 minutes, the group closes automatically, same as Disband.',
+        '• **Queue offers expire** — a freed spot is only held 5 minutes before it moves to the next person in line.',
+        '• **Disband has a grace period** — clicking **Disband Group** gives everyone 60 seconds to **Cancel Disband** before the post actually closes.',
+        '• **The post tidies itself up** — join/leave notices and other updates replace each other automatically so the thread doesn\'t fill up with old messages.',
+      ].join('\n')
+    )
+    .setColor(EMBED_COLOR);
+}
+
 // Reads categories/activities live from CATEGORIES — a new one shows up on the next restart.
 function buildActivitiesEmbed() {
   const activityFields = Object.values(CATEGORIES)
@@ -74,7 +93,7 @@ function buildActivitiesEmbed() {
 }
 
 function buildStartPageEmbeds() {
-  return [buildInstructionsEmbed(), buildActivitiesEmbed()];
+  return [buildInstructionsEmbed(), buildAutomationEmbed(), buildActivitiesEmbed()];
 }
 
 // Every active + archived thread in the forum, as one list — shared by both fallback lookups
