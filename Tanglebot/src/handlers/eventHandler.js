@@ -14,10 +14,6 @@ const {
   handleLfgPostGroupButtonInteraction,
 } = require('../utils/lfgPost');
 const { ensureLfgStartPost } = require('../utils/lfgStartPage');
-const {
-  handleLfgSuggestionSelectInteraction,
-  handleLfgSuggestionModalSubmit,
-} = require('../utils/lfgSuggestion');
 
 // customId-prefix routing tables for InteractionCreate, one per interaction kind. errorReply is
 // optional — omitted for the honeypot button so a mis-click there stays silent instead of
@@ -29,11 +25,9 @@ const BUTTON_ROUTES = [
 ];
 const SELECT_ROUTES = [
   { prefix: 'lfgpost:', handler: handleLfgPostSelectInteraction, errorLabel: '[LFG] Post select interaction error:', errorReply: 'Something went wrong updating your LFG post setup.' },
-  { prefix: 'lfgsuggestion:', handler: handleLfgSuggestionSelectInteraction, errorLabel: '[LFG] Suggestion select interaction error:', errorReply: 'Something went wrong with your suggestion.' },
 ];
 const MODAL_ROUTES = [
   { prefix: 'lfgpost:', handler: handleLfgPostModalSubmit, errorLabel: '[LFG] Post modal submit error:', errorReply: 'Something went wrong creating your LFG post.' },
-  { prefix: 'lfgsuggestion:', handler: handleLfgSuggestionModalSubmit, errorLabel: '[LFG] Suggestion modal submit error:', errorReply: 'Something went wrong sending your suggestion.' },
 ];
 
 // Finds the route whose prefix matches this interaction's customId (if any) and runs it, logging

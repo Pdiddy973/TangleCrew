@@ -35,7 +35,6 @@ function buildInstructionsEmbed() {
         '**Commands**',
         '• `/lfg-post` — create a new LFG group: pick a category, activity, group size, and start time.',
         '• `/lfg-roles` — opt in/out of ping roles for specific activities, so you get notified when a group forms.',
-        '• `/lfg-suggestion` — suggest a new activity, or an edit to an existing one.',
         '',
         '_See the gif below for how joining, leaving, and the queue work on a group post._',
       ].join('\n')
