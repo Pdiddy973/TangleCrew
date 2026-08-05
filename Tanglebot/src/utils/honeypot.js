@@ -9,7 +9,7 @@ const {
   PermissionFlagsBits,
 } = require('discord.js');
 const axios = require('axios');
-const { readJson, writeJson, truncate } = require('./db');
+const { readJson, writeJson, truncate, hasAnyRole } = require('./db');
 
 const RUNTIME_CONFIG_FILE = 'honeypot-runtime-config.json';
 const TIMEOUT_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
@@ -50,9 +50,7 @@ function setTestModeEnabled(enabled) {
 }
 
 function hasHoneypotAdminAccess(member, env = process.env) {
-  if (!member) return false;
-  const roleIds = [env.OWNER_ROLE_ID, env.TEMPLAR_ROLE_ID].filter(Boolean);
-  return roleIds.some(roleId => member.roles?.cache?.has(roleId));
+  return hasAnyRole(member, [env.OWNER_ROLE_ID, env.TEMPLAR_ROLE_ID]);
 }
 
 async function clearHoneypotChannel(channel) {

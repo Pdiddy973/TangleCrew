@@ -1,6 +1,6 @@
 const { ChannelType, ChannelFlags, EmbedBuilder } = require('discord.js');
 const { readJson, writeJson, truncate } = require('./db');
-const { CATEGORIES, emojiMarkup, isAlreadyGoneError, notifyAdminLog } = require('./roleMenu');
+const { CATEGORIES, emojiLabel, isAlreadyGoneError, notifyAdminLog } = require('./roleMenu');
 
 // Same forum /lfg-post creates group threads in — the start page lives there too.
 const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
@@ -53,13 +53,12 @@ function buildActivitiesEmbed() {
   const activityFields = Object.values(CATEGORIES)
     .slice(0, MAX_EMBED_FIELDS)
     .map((category) => {
-      const categoryEmoji = emojiMarkup(category.buttonEmoji);
       const roleList = truncate(
-        category.roles.map((r) => [emojiMarkup(r.emoji), r.label].filter(Boolean).join(' ')).join(', '),
+        category.roles.map((r) => emojiLabel(r.emoji, r.label)).join(', '),
         MAX_FIELD_VALUE_LENGTH
       );
       return {
-        name: categoryEmoji ? `${categoryEmoji} ${category.label}` : category.label,
+        name: emojiLabel(category.buttonEmoji, category.label),
         // A thin rule under the category name — addFields' name/value gap alone reads too
         // cramped once the value is a long, comma-packed activity list.
         value: `${FIELD_DIVIDER}\n${roleList}`,
@@ -78,28 +77,28 @@ function buildStartPageEmbeds() {
   return [buildInstructionsEmbed(), buildActivitiesEmbed()];
 }
 
-// Fallback for a missing/stale stored id — finds a bot-owned thread with our title.
-// Ownership check stops it from adopting an unrelated thread that shares the title.
-async function findExistingStartThread(forumChannel, botUserId) {
+// Every active + archived thread in the forum, as one list — shared by both fallback lookups
+// below so a missing/stale stored id only costs one pair of fetches, not two.
+async function fetchAllThreads(forumChannel) {
   const [active, archived] = await Promise.all([
     forumChannel.threads.fetchActive().catch(() => null),
     forumChannel.threads.fetchArchived().catch(() => null),
   ]);
-  const all = [...(active?.threads.values() ?? []), ...(archived?.threads.values() ?? [])];
-  return all.find((t) => t.ownerId === botUserId && t.name === START_POST_TITLE) ?? null;
+  return [...(active?.threads.values() ?? []), ...(archived?.threads.values() ?? [])];
+}
+
+// Fallback for a missing/stale stored id — finds a bot-owned thread with our title.
+// Ownership check stops it from adopting an unrelated thread that shares the title.
+function findExistingStartThread(threads, botUserId) {
+  return threads.find((t) => t.ownerId === botUserId && t.name === START_POST_TITLE) ?? null;
 }
 
 // Last resort: forums only allow a small, fixed number of pinned posts, so creating a fresh
 // thread and pinning it fails once that cap is already taken by something else. Rather than
 // erroring out, adopt whatever's already pinned — only its starter message gets replaced, so any
 // replies already in that thread are left alone.
-async function findAnyPinnedThread(forumChannel) {
-  const [active, archived] = await Promise.all([
-    forumChannel.threads.fetchActive().catch(() => null),
-    forumChannel.threads.fetchArchived().catch(() => null),
-  ]);
-  const all = [...(active?.threads.values() ?? []), ...(archived?.threads.values() ?? [])];
-  return all.find((t) => t.flags?.has(ChannelFlags.Pinned)) ?? null;
+function findAnyPinnedThread(threads) {
+  return threads.find((t) => t.flags?.has(ChannelFlags.Pinned)) ?? null;
 }
 
 // Creates a fresh start post and remembers its id so future restarts don't duplicate it.
@@ -128,12 +127,15 @@ async function ensureLfgStartPost(client) {
 
   const stored = readJson(START_POST_DATA_FILE);
   let thread = stored.threadId ? await forumChannel.threads.fetch(stored.threadId).catch(() => null) : null;
-  if (!thread) thread = await findExistingStartThread(forumChannel, client.user.id);
 
   let adopted = false;
   if (!thread) {
-    thread = await findAnyPinnedThread(forumChannel);
-    adopted = Boolean(thread);
+    const threads = await fetchAllThreads(forumChannel);
+    thread = findExistingStartThread(threads, client.user.id);
+    if (!thread) {
+      thread = findAnyPinnedThread(threads);
+      adopted = Boolean(thread);
+    }
   }
 
   const embeds = buildStartPageEmbeds();
