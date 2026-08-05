@@ -20,6 +20,11 @@ const EMBED_COLOR = 0x006400;
 // Thin rule separating a category's name from its activity list — see buildActivitiesEmbed.
 const FIELD_DIVIDER = '─'.repeat(20);
 
+// U+2800 (braille blank) renders as nothing but isn't whitespace, so it doesn't get trimmed like a
+// space would. A long run of it in a footer forces that embed to Discord's max render width, so the
+// text-only embeds below match the width the instructions embed gets from its gif.
+const WIDTH_PAD = '⠀'.repeat(120);
+
 // Pulled from the repo's master branch (not a pinned commit) so pushing a new gif there
 // updates the embed automatically — no redeploy or code change needed.
 const HOW_TO_GIF_URL = 'https://raw.githubusercontent.com/Pdiddy973/TangleCrew/master/assets/lfg-tour.gif';
@@ -39,7 +44,8 @@ function buildInstructionsEmbed() {
         '_See the gif below for how joining, leaving, and the queue work on a group post._',
       ].join('\n')
     )
-    .setColor(EMBED_COLOR);
+    .setColor(EMBED_COLOR)
+    .setFooter({ text: WIDTH_PAD });
 }
 
 // Covers the automatic/behind-the-scenes behavior that isn't a button someone clicks — worth
@@ -58,7 +64,8 @@ function buildAutomationEmbed() {
         '• **The post tidies itself up** — old notices get replaced automatically.',
       ].join('\n')
     )
-    .setColor(EMBED_COLOR);
+    .setColor(EMBED_COLOR)
+    .setFooter({ text: WIDTH_PAD });
 }
 
 // Reads categories/activities live from CATEGORIES — a new one shows up on the next restart.
@@ -83,7 +90,7 @@ function buildActivitiesEmbed() {
     .setDescription('Everything currently available to queue up for:')
     .addFields(activityFields)
     .setColor(EMBED_COLOR)
-    .setFooter({ text: 'This post stays pinned at the top of the forum.' });
+    .setFooter({ text: WIDTH_PAD });
 }
 
 function buildStartPageEmbeds() {
