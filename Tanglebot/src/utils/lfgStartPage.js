@@ -15,7 +15,10 @@ const MAX_EMBED_FIELDS = 25;
 const MAX_FIELD_VALUE_LENGTH = 1024;
 
 // Shared accent color for both embeds, so they read as one post despite being built separately.
-const EMBED_COLOR = 0xc2a24c;
+const EMBED_COLOR = 0x006400;
+
+// Thin rule separating a category's name from its activity list — see buildActivitiesEmbed.
+const FIELD_DIVIDER = '─'.repeat(20);
 
 function buildInstructionsEmbed() {
   return new EmbedBuilder()
@@ -51,12 +54,15 @@ function buildActivitiesEmbed() {
     .slice(0, MAX_EMBED_FIELDS)
     .map((category) => {
       const categoryEmoji = emojiMarkup(category.buttonEmoji);
+      const roleList = truncate(
+        category.roles.map((r) => [emojiMarkup(r.emoji), r.label].filter(Boolean).join(' ')).join(', '),
+        MAX_FIELD_VALUE_LENGTH
+      );
       return {
         name: categoryEmoji ? `${categoryEmoji} ${category.label}` : category.label,
-        value: truncate(
-          category.roles.map((r) => [emojiMarkup(r.emoji), r.label].filter(Boolean).join(' ')).join(', '),
-          MAX_FIELD_VALUE_LENGTH
-        ),
+        // A thin rule under the category name — addFields' name/value gap alone reads too
+        // cramped once the value is a long, comma-packed activity list.
+        value: `${FIELD_DIVIDER}\n${roleList}`,
       };
     });
 
@@ -81,6 +87,19 @@ async function findExistingStartThread(forumChannel, botUserId) {
   ]);
   const all = [...(active?.threads.values() ?? []), ...(archived?.threads.values() ?? [])];
   return all.find((t) => t.ownerId === botUserId && t.name === START_POST_TITLE) ?? null;
+}
+
+// Last resort: forums only allow a small, fixed number of pinned posts, so creating a fresh
+// thread and pinning it fails once that cap is already taken by something else. Rather than
+// erroring out, adopt whatever's already pinned — only its starter message gets replaced, so any
+// replies already in that thread are left alone.
+async function findAnyPinnedThread(forumChannel) {
+  const [active, archived] = await Promise.all([
+    forumChannel.threads.fetchActive().catch(() => null),
+    forumChannel.threads.fetchArchived().catch(() => null),
+  ]);
+  const all = [...(active?.threads.values() ?? []), ...(archived?.threads.values() ?? [])];
+  return all.find((t) => t.flags?.has(ChannelFlags.Pinned)) ?? null;
 }
 
 // Creates a fresh start post and remembers its id so future restarts don't duplicate it.
@@ -111,6 +130,12 @@ async function ensureLfgStartPost(client) {
   let thread = stored.threadId ? await forumChannel.threads.fetch(stored.threadId).catch(() => null) : null;
   if (!thread) thread = await findExistingStartThread(forumChannel, client.user.id);
 
+  let adopted = false;
+  if (!thread) {
+    thread = await findAnyPinnedThread(forumChannel);
+    adopted = Boolean(thread);
+  }
+
   const embeds = buildStartPageEmbeds();
 
   if (thread) {
@@ -119,6 +144,14 @@ async function ensureLfgStartPost(client) {
       await thread.messages.edit(thread.id, { embeds });
       if (!thread.flags?.has(ChannelFlags.Pinned)) await thread.pin();
       writeJson(START_POST_DATA_FILE, { threadId: thread.id });
+      if (adopted) {
+        console.log(`[LFG] Adopted the already-pinned thread as the LFG start page: ${thread.id}`);
+        await notifyAdminLog(
+          client,
+          'ℹ️ LFG Start Page Adopted an Existing Pinned Post',
+          `The forum's pin slot was already taken, so <#${thread.id}> was turned into the LFG start page instead of creating a new post. Its replies were left as-is — only the starter message changed.`
+        );
+      }
       return;
     } catch (err) {
       if (!isAlreadyGoneError(err)) {
