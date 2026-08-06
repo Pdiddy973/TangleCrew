@@ -89,6 +89,7 @@ function loadEvents(client) {
 
     await sendHoneypotStartupMessage(client, honeypotConfig);
     await ensureLfgStartPost(client);
+    await refreshLeaderboardOnStartup(client);
   });
 
   client.on(Events.MessageCreate, async (message) => {

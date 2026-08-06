@@ -86,6 +86,55 @@ This command is only loaded if `DONATIONS_SHEET_URL` and `DONATIONS_CHANNEL_ID` 
 
 ---
 
+### 🐾 `/pethighscore` — Pet High Scores
+
+Tracks which OSRS pets each member has collected in a Google Sheet the bot both reads and writes, posts a ranked leaderboard embed, and grants a Pet Master role once a member reaches a configurable pet count.
+
+**When to use it:**
+- Logging a pet drop for a member and having the leaderboard update automatically
+- Keeping a live, sorted "who has the most pets" leaderboard pinned in a channel
+- Automatically granting a Pet Master role once someone collects enough pets
+
+**Subcommands:**
+
+| Subcommand | Description |
+|------------|-------------|
+| `add` | Adds a pet to a member's collection |
+| `remove` | Removes a pet from a member's collection (for fixing mistakes) |
+| `new` | Registers a brand-new pet type on the leaderboard — **Owner role only** |
+
+`add`/`remove` take a `user` (the member) and a `pet` option (autocompletes against the full pet list as you type). `new` takes a `name` and an `emoji` (paste the custom emoji itself, or its raw numeric ID) and appends it to the `Pets` tab of the Google Sheet on the fly — no code edit or bot restart needed, and it's immediately available in `add`/`remove` autocomplete. This is separate from and stricter than the Templar gate on `add`/`remove`, since it changes the shared pet list rather than one member's data.
+
+Restricted to users with the **Templar** role. Only loaded if `PET_HIGHSCORES_SHEET_ID`, `PET_HIGHSCORES_CHANNEL_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON` are set.
+
+<details>
+<summary><strong>How it works</strong></summary>
+
+1. Reads the member's current row from the configured Google Sheet (by Discord ID), or starts a new one if they don't have a row yet.
+2. Adds or removes the pet, keeping each member's pet list stored in a fixed order (the order pets are listed on the `Pets` sheet tab) regardless of the order they were logged in.
+3. Writes the updated row back to the sheet.
+4. Re-sorts every member by pet count, highest first, and rebuilds the leaderboard embed: one block per member showing `@mention — N pets` followed by a large row of that member's pet emojis (using the same "# heading" trick `/updatedonations` uses to enlarge emoji).
+5. Posts the leaderboard to the configured channel, or edits the existing leaderboard message(s) in place (no duplicates), the same message-recovery behavior as `/updatedonations` if the tracked message is missing.
+6. If the member's new pet count crosses `PET_MASTER_THRESHOLD` in either direction, grants or revokes the Pet Master role.
+
+</details>
+
+<details>
+<summary><strong>Setup</strong></summary>
+
+1. Make a copy of `Tanglebot/example/pethighscores_template.xlsx` as your live Google Sheet — open [sheets.google.com](https://sheets.google.com), **File → Import → Upload**, select the `.xlsx`, and when prompted choose **Create new spreadsheet** (not "Insert new sheet(s)" or just opening the uploaded file from Drive — those can leave it in Office-compatibility mode, which the Sheets API can't read/write and fails with `must not be an Office file`). This becomes your sheet, already set up with two tabs the bot expects by exact name: `Highscores` (member data — `DiscordID`, `DisplayName`, `Pets` columns, the `Pets` column holding a comma-separated list of pet *keys* from the `Pets` tab, e.g. `baby_mole, heron, rocky`, not display names) and `Pets` (the pet catalog — `Key`, `Name`, `EmojiID` columns, pre-filled with the full pet list). Don't rename either tab. Clear the example rows on `Highscores` if you don't want the sample data.
+2. Follow [Google service account](#google-service-account) below to create a service account (or reuse one you've already set up) and share the sheet with it as an **Editor**.
+3. Set `PET_HIGHSCORES_SHEET_ID` to the sheet's ID (from its URL: `docs.google.com/spreadsheets/d/<THIS_PART>/edit`).
+4. Set `PET_HIGHSCORES_CHANNEL_ID` to the channel where the leaderboard should be posted.
+5. Optionally set `PET_MASTER_ROLE_ID` and `PET_MASTER_THRESHOLD` (default: 10) to have the bot manage the Pet Master role.
+6. On the `Pets` tab, fill in each pet's `EmojiID` with the custom Discord emoji ID for that pet (upload the pet emojis to your server/app first, then copy each one's ID). Pets left with an empty `EmojiID` show a ❔ placeholder on the leaderboard instead of failing. New pets released in-game can be added as a new row directly, or by an Owner running `/pethighscore new` — row order is the order pets are displayed in, and new entries are appended to the end. The bot reads this tab once at startup and keeps it in sync in memory as pets are added via `/pethighscore new`; a manual edit to existing rows needs a bot restart to take effect.
+
+> **Note:** For role management to work, the bot needs the **Manage Roles** permission and its highest role must be positioned **above** the Pet Master role in Server Settings → Roles.
+
+</details>
+
+---
+
 ### 🔔 `/lfg-roles` — Event Notification Roles
 
 Lets members self-assign notification roles for specific bosses, raids, and skilling/minigame activities, so they only get pinged for exactly what they're interested in.
@@ -222,8 +271,30 @@ Use `/honeypot testmode true` to dry-run the trap(s): triggering it still posts 
 
 - [Node.js](https://nodejs.org/) v18 or later
 - A Discord bot token and application — create one at [discord.com/developers](https://discord.com/developers/applications)
-- The Discord bot's **Server Members Intent** enabled in the Developer Portal for `/updatedonations`
+- The Discord bot's **Server Members Intent** enabled in the Developer Portal for `/updatedonations` and `/pethighscore`
 - The Discord bot's **Message Content Intent** enabled in the Developer Portal if using KC/drop proof intake
+
+### Google service account
+
+Some features — need to *write* to a Google Sheet, which requires real authentication. This creates one dedicated Google identity ("service account") that only has access to sheets you explicitly share with it, stored once as `GOOGLE_SERVICE_ACCOUNT_JSON` and reused by every Sheets-based feature.
+
+<details>
+<summary><strong>Steps</strong></summary>
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a new project (or pick an existing one) — top-left project dropdown → **New Project**.
+2. In the search bar, find and open **Google Sheets API**, then click **Enable**.
+3. Go to **APIs & Services → Credentials → Create Credentials → Service account**.
+4. Give it any name (e.g. `tanglebot-sheets`) and click **Done** — you can skip the optional role/access steps.
+5. Click into the new service account → **Keys** tab → **Add Key → Create new key → JSON** → **Create**. This downloads a `.json` key file — treat it like a password, never commit it.
+6. Copy the **`client_email`** field out of that JSON file (looks like `something@your-project.iam.gserviceaccount.com`).
+7. For each Google Sheet a feature needs to access (e.g. your `/pethighscore` sheet) → **Share** → paste that email in → set its role to **Editor** → **Send** (uncheck "Notify people" if you don't want an email sent to a bot). Repeat this step for any other sheet you later want the bot to read/write — no new key needed, just another share.
+8. Minify the downloaded JSON file to a single line and paste it as the value of `GOOGLE_SERVICE_ACCOUNT_JSON` in `.env`. Easiest way to minify:
+   ```bash
+   node -e "console.log(JSON.stringify(require('./path/to/your-key-file.json')))"
+   ```
+   Paste the entire output (starting with `{"type":"service_account",...}`) as one line — no extra quotes needed around it.
+
+</details>
 
 ### Install
 
@@ -245,11 +316,20 @@ DISCORD_BOT_TOKEN=your_bot_token
 CLIENT_ID=your_application_id
 CLAN_ID=your_server_id
 OWNER_ID=your_discord_user_id
+
+# Optional Google Sheets access, shared by any Sheets-based feature
+GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+
 OWNER_ROLE_ID=your_owner_role_id
 COORDINATOR_ROLE_ID=your_coordinator_role_id
 
 # Optional LFG forum posts (/lfg-post)
 LFG_FORUM_CHANNEL_ID=your_lfg_forum_channel_id
+
+# Optional pet high scores (/pethighscore)
+PET_HIGHSCORES_SHEET_ID=your_sheet_id
+PET_HIGHSCORES_CHANNEL_ID=your_pethighscores_channel_id
+PET_MASTER_ROLE_ID=your_pet_master_role_id
 
 # Optional announcement cleanup
 ANNOUNCEMENT_CHANNEL_ID=your_announcement_channel_id
