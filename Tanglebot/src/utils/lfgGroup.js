@@ -61,32 +61,63 @@ function findTimeOption(value) {
   return TIME_OFFSET_OPTIONS.find((o) => o.value === value);
 }
 
-// Bucket edges for the post title's live countdown — hourly beyond an hour out, then
-// 30/15/5 minutes as it gets close, then "Started". A finer scale than TIME_OFFSET_OPTIONS itself
-// (which has no 5-minute pick), but reuses its hourly labels rather than redeclaring them.
+// Thread titles cannot use Discord's live relative timestamp formatter, so choose the closest
+// human label ourselves. Switching at the midpoint between neighboring labels keeps the title in
+// line with the embed's <t:...:R> wording instead of leaving "2 Hours" up until the exact 60m mark.
 const COUNTDOWN_BUCKETS = [
   { minutes: 5, label: '5 Min' },
   ...TIME_OFFSET_OPTIONS.filter((o) => parseInt(o.value, 10) >= 15).map((o) => ({ minutes: parseInt(o.value, 10), label: o.label })),
 ];
 
-// A live "Start:" label for the post title — stays on the current bucket's label for its whole
-// span instead of stepping down the instant a minute passes (see computeCountdownRefreshDelay).
+function resolveCountdownBucket(minutesRemaining) {
+  if (minutesRemaining <= 0) {
+    return null;
+  }
+
+  let bestBucket = COUNTDOWN_BUCKETS[COUNTDOWN_BUCKETS.length - 1];
+  let bestDistance = Math.abs(bestBucket.minutes - minutesRemaining);
+  for (const bucket of COUNTDOWN_BUCKETS) {
+    const distance = Math.abs(bucket.minutes - minutesRemaining);
+    if (distance < bestDistance) {
+      bestBucket = bucket;
+      bestDistance = distance;
+    }
+  }
+  return bestBucket;
+}
+
+// A live "Start:" label for the post title. The bucket is chosen by nearest label rather than the
+// next-highest label so "in 2 Hours" flips to "in 1 Hour" around the same point Discord's
+// relative timestamp does.
 function describeStartCountdown(timeEpoch) {
   const minutesRemaining = Math.ceil((timeEpoch * 1000 - Date.now()) / 60000);
   if (minutesRemaining <= 0) return 'Started';
-  const bucket = COUNTDOWN_BUCKETS.find((b) => b.minutes >= minutesRemaining) ?? COUNTDOWN_BUCKETS[COUNTDOWN_BUCKETS.length - 1];
+  const bucket = resolveCountdownBucket(minutesRemaining) ?? COUNTDOWN_BUCKETS[0];
   return `in ${bucket.label}`;
 }
 
-// Delay (ms) until describeStartCountdown's label would next change, so the post title only
-// renames when the text needs updating, not on a fixed poll interval. Returns null once
-// the start time has passed — the label settles on "Started" and stops refreshing.
+// Delay (ms) until the nearest bucket would change. Midpoint boundaries keep title changes aligned
+// with the chosen labels without polling continuously. Returns null once the start time has passed.
 function computeCountdownRefreshDelay(timeEpoch) {
   const minutesRemaining = Math.ceil((timeEpoch * 1000 - Date.now()) / 60000);
   if (minutesRemaining <= 0) return null;
-  const bucketIndex = COUNTDOWN_BUCKETS.findIndex((b) => b.minutes >= minutesRemaining);
-  const nextChangeAtMinutes = bucketIndex > 0 ? COUNTDOWN_BUCKETS[bucketIndex - 1].minutes : 0;
-  return Math.max(timeEpoch * 1000 - nextChangeAtMinutes * 60000 - Date.now(), 1000);
+
+  const bucket = resolveCountdownBucket(minutesRemaining);
+  if (!bucket) return null;
+
+  const bucketIndex = COUNTDOWN_BUCKETS.findIndex((candidate) => candidate.minutes === bucket.minutes);
+  const lowerBucket = bucketIndex > 0 ? COUNTDOWN_BUCKETS[bucketIndex - 1] : null;
+  const upperBucket = bucketIndex < COUNTDOWN_BUCKETS.length - 1 ? COUNTDOWN_BUCKETS[bucketIndex + 1] : null;
+
+  const lowerBoundary = lowerBucket ? (bucket.minutes + lowerBucket.minutes) / 2 : 0;
+  const upperBoundary = upperBucket ? (bucket.minutes + upperBucket.minutes) / 2 : Number.POSITIVE_INFINITY;
+  const nextBoundaryMinutes = minutesRemaining > bucket.minutes ? upperBoundary : lowerBoundary;
+
+  if (!Number.isFinite(nextBoundaryMinutes)) {
+    return Math.max((minutesRemaining - bucket.minutes + 0.5) * 60000, 1000);
+  }
+
+  return Math.max(timeEpoch * 1000 - nextBoundaryMinutes * 60000 - Date.now(), 1000);
 }
 
 // Resolved at creation time (not when the dropdown was rendered), so a slow-to-decide creator

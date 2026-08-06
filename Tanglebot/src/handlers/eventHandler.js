@@ -14,7 +14,9 @@ const {
   handleLfgPostGroupButtonInteraction,
 } = require('../utils/lfgPost');
 const { ensureLfgStartPost } = require('../utils/lfgStartPage');
-const { refreshLeaderboardOnStartup } = require('../commands/pethighscore');
+const { syncDiscordCatalog, isConfigured: isLfgBackendConfigured } = require('../utils/lfgBackend');
+const { startLfgDeliveryWorker } = require('../utils/lfgDeliveryWorker');
+const { handleSyncedGroupButtonInteraction } = require('../utils/lfgSyncedPost');
 
 // customId-prefix routing tables for InteractionCreate, one per interaction kind. errorReply is
 // optional — omitted for the honeypot button so a mis-click there stays silent instead of
@@ -23,6 +25,7 @@ const BUTTON_ROUTES = [
   { prefix: 'hp:', handler: handleHoneypotButtonInteraction, errorLabel: 'Honeypot button interaction error:' },
   { prefix: 'roles:', handler: handleRoleMenuButtonInteraction, errorLabel: 'Role menu button interaction error:', errorReply: 'Something went wrong updating your roles.' },
   { prefix: 'lfgpostgroup:', handler: handleLfgPostGroupButtonInteraction, errorLabel: '[LFG] Post group button interaction error:', errorReply: 'Something went wrong updating that group.' },
+  { prefix: 'lfgsyncgroup:', handler: handleSyncedGroupButtonInteraction, errorLabel: '[LFG] Synced group button interaction error:', errorReply: 'Something went wrong updating that shared LFG group.' },
 ];
 const SELECT_ROUTES = [
   { prefix: 'lfgpost:', handler: handleLfgPostSelectInteraction, errorLabel: '[LFG] Post select interaction error:', errorReply: 'Something went wrong updating your LFG post setup.' },
@@ -45,6 +48,7 @@ async function dispatchByCustomIdPrefix(interaction, routes) {
 }
 
 function loadEvents(client) {
+  let stopLfgDeliveryWorker = null;
   const submissionConfig = loadSubmissionConfig();
   client.submissionConfig = submissionConfig;
   if (submissionConfig.enabled) {
@@ -60,6 +64,17 @@ function loadEvents(client) {
   client.once(Events.ClientReady, async (c) => {
     console.log(`Logged in as ${c.user.tag}`);
     await syncCommands(client);
+    if (isLfgBackendConfigured()) {
+      try {
+        const result = await syncDiscordCatalog();
+        if (!result?.skipped) {
+          console.log(`[LFG] Synced Discord catalog to Supabase (${result?.updated ?? 0} rows updated).`);
+        }
+      } catch (err) {
+        console.error('[LFG] Failed to sync Discord catalog to Supabase:', err.message);
+      }
+    }
+    stopLfgDeliveryWorker = startLfgDeliveryWorker();
 
     const adminLogChannelId = process.env.ADMIN_LOG_CHANNEL_ID;
     const ownerRoleId = process.env.OWNER_ROLE_ID;
@@ -138,6 +153,13 @@ function loadEvents(client) {
     } catch (err) {
       console.error(err);
       await replyOrFollowUp(interaction, 'Something went wrong running that command.');
+    }
+  });
+
+  client.once(Events.ClientDestroy, () => {
+    if (stopLfgDeliveryWorker) {
+      stopLfgDeliveryWorker();
+      stopLfgDeliveryWorker = null;
     }
   });
 }
