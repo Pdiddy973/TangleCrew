@@ -45,6 +45,12 @@ const {
   isValidEmoji,
   emojiMarkup,
 } = require('./roleMenu');
+const {
+  createGroup: createBackendGroup,
+  actOnGroup: actOnBackendGroup,
+  syncGroupMetadata,
+  isConfigured: isLfgBackendConfigured,
+} = require('./lfgBackend');
 
 // The Discord Forum Channel where /lfg-post posts get created as threads — create one in your server, copy its ID, and set this in .env.
 const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
@@ -76,6 +82,21 @@ const KEEP_ALIVE_RETRY_DELAY_MS = 15 * 60 * 1000;
 // In-memory state — lost on restart/redeploy, fine for same-day posts but worth knowing.
 const setupSessions = new Map(); // userId -> { category, activity, size, time }
 const activeGroups = new Map(); // groupId -> group state
+
+async function syncBackendQueueCount(group) {
+  if (!group?.backendGroupId || !isLfgBackendConfigured()) {
+    return;
+  }
+
+  try {
+    await syncGroupMetadata({
+      groupId: group.backendGroupId,
+      queueCount: group.queue.length,
+    });
+  } catch (err) {
+    console.error(`[LFG] Could not sync queue count for group ${group.id}:`, err.message);
+  }
+}
 
 // ---- Setup UI (accordion: Category -> Activity -> Size -> Start Time) ----
 // No separate "Create" button.
@@ -307,6 +328,7 @@ async function handleDescriptionModalSubmit(interaction) {
     pendingOfferTimeoutId: null,
     keepAliveTimeoutId: null, // the recurring "ask every 2 hours" timer — see scheduleKeepAliveCheck
     keepAliveReplyTimeoutId: null, // the 10-minute reply window after an ask — see runKeepAliveCheck
+    backendGroupId: null,
   };
   activeGroups.set(groupId, group);
 
@@ -342,6 +364,30 @@ async function handleDescriptionModalSubmit(interaction) {
 
   group.threadId = thread.id;
   console.log(`[LFG] Post created: group ${groupId} (${roleLabel}, ${sizeOption.label}, ${timeOption.label}), thread ${thread.id}, by ${interaction.user.username}`);
+
+  if (isLfgBackendConfigured()) {
+    try {
+      const backendGroup = await createBackendGroup({
+        member: interaction.member,
+        categoryKey: session.category,
+        activityLabel: activityOption.label,
+        description,
+        startTimeIso: new Date(timeEpoch * 1000).toISOString(),
+        maximumPlayers: Number.isFinite(sizeCap) ? sizeCap : null,
+        discordChannelId: thread.id,
+        discordMessageId: thread.id,
+      });
+      group.backendGroupId = backendGroup?.id ?? null;
+      await syncBackendQueueCount(group);
+    } catch (err) {
+      console.error(`[LFG] Could not mirror created group ${groupId} to backend:`, err.message);
+      await notifyAdminLog(
+        interaction.client,
+        '⚠️ LFG Backend Mirror Failed',
+        `Discord group **${roleLabel}** was created in thread <#${thread.id}> but could not be mirrored to the shared LFG backend: ${err.message}`
+      );
+    }
+  }
 
   // Best-effort — a failed reaction (e.g. missing Add Reactions permission) shouldn't block the post.
   try {
@@ -564,6 +610,7 @@ async function handleQueueOfferTimeout(client, group) {
 
   try {
     const channel = await client.channels.fetch(group.threadId);
+    await syncBackendQueueCount(group);
     await advanceQueueOrReopen(client, channel, group, `⌛ <@${skippedUserId}> didn't respond in time and was removed from the queue.`);
   } catch (err) {
     if (!isAlreadyGoneError(err)) console.error(`[LFG] Could not advance queue for group ${group.id}:`, err.message);
@@ -616,6 +663,7 @@ async function handleJoinButton(interaction, groupId) {
     group.queue.push(interaction.user.id);
     // No rename — joining the queue doesn't change the group's status word.
     if (!(await updateGroupMessage(interaction, group))) return;
+    await syncBackendQueueCount(group);
     return followUpEphemeral(
       interaction,
       `⏳ This group is full — you're in the queue (position ${group.queue.length}). You'll be pinged here if a spot opens up.`
@@ -631,6 +679,18 @@ async function handleJoinButton(interaction, groupId) {
   }
 
   if (!(await updateGroupMessage(interaction, group))) return;
+
+  if (group.backendGroupId && isLfgBackendConfigured()) {
+    try {
+      await actOnBackendGroup({
+        member: interaction.member,
+        groupId: group.backendGroupId,
+        action: 'join',
+      });
+    } catch (err) {
+      console.error(`[LFG] Could not mirror join for group ${groupId}:`, err.message);
+    }
+  }
 
   // Independent Discord resources (the ephemeral reply, the thread name, the activity message) —
   // run them concurrently instead of one after another. updateGroupMessage above must still go first:
@@ -671,6 +731,7 @@ async function handleLeaveButton(interaction, groupId) {
     group.queue.splice(queueIndex, 1);
     // No rename — leaving the queue doesn't change the group's status word.
     if (!(await updateGroupMessage(interaction, group))) return;
+    await syncBackendQueueCount(group);
     return followUpEphemeral(interaction, 'You left the queue.');
   }
 
@@ -681,6 +742,17 @@ async function handleLeaveButton(interaction, groupId) {
   await followUpEphemeral(interaction, 'You left the group.', { autoDelete: true });
 
   const leftText = memberNotice(group, `⚠️ <@${interaction.user.id}> left the group.`);
+  if (group.backendGroupId && isLfgBackendConfigured()) {
+    try {
+      await actOnBackendGroup({
+        member: interaction.member,
+        groupId: group.backendGroupId,
+        action: 'leave',
+      });
+    } catch (err) {
+      console.error(`[LFG] Could not mirror leave for group ${groupId}:`, err.message);
+    }
+  }
 
   if (wasFull) {
     // A full group doesn't just reopen the instant a spot frees — if anyone's queued, they get first refusal
@@ -734,8 +806,20 @@ async function handleQueueAcceptButton(interaction, groupId) {
   group.queue.shift();
   group.members.add(interaction.user.id);
   group.status = isGroupFull(group) ? 'closed' : 'open';
+  await syncBackendQueueCount(group);
 
   const acceptedText = memberNotice(group, `✅ <@${interaction.user.id}> accepted the open spot and joined!`);
+  if (group.backendGroupId && isLfgBackendConfigured()) {
+    try {
+      await actOnBackendGroup({
+        member: interaction.member,
+        groupId: group.backendGroupId,
+        action: 'join',
+      });
+    } catch (err) {
+      console.error(`[LFG] Could not mirror queue accept for group ${groupId}:`, err.message);
+    }
+  }
   // Someone just joined — proof the group's still active, so reset the keep-alive clock.
   resetKeepAliveCheck(interaction.client, group);
 
@@ -766,6 +850,7 @@ async function handleQueueDeclineButton(interaction, groupId) {
 
   clearPendingOffer(group);
   const declinedUserId = group.queue.shift();
+  await syncBackendQueueCount(group);
 
   await advanceQueueOrReopen(interaction.client, interaction.channel, group, `↪️ <@${declinedUserId}> declined the spot.`);
 }
@@ -836,6 +921,17 @@ async function handleDisbandButton(interaction, groupId) {
   // Nothing else is actionable on the main post once disbanding starts — clear its row.
   if (!(await updateGroupMessage(interaction, group, []))) return;
 
+  if (group.backendGroupId && isLfgBackendConfigured()) {
+    try {
+      await actOnBackendGroup({
+        member: interaction.member,
+        groupId: group.backendGroupId,
+        action: 'close',
+      });
+    } catch (err) {
+      console.error(`[LFG] Could not mirror close for group ${groupId}:`, err.message);
+    }
+  }
   await beginDisband(interaction.client, interaction.channel, group, `🛑 <@${interaction.user.id}> has selected to disband this group.`);
 }
 
