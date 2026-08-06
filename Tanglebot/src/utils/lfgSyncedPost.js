@@ -77,6 +77,7 @@ function buildSyncedThreadName(group) {
 
 function buildSyncedGroupEmbed(group) {
   const members = Array.isArray(group?.members) ? group.members : [];
+  const queueMembers = Array.isArray(group?.queueMembers) ? group.queueMembers : [];
   const description = [
     `**Activity:** ${group?.category?.displayName ?? 'LFG'}: ${group?.activity ?? 'Unknown'}`,
     `**Start:** <t:${startEpoch(group)}:t> (<t:${startEpoch(group)}:R>)`,
@@ -85,6 +86,9 @@ function buildSyncedGroupEmbed(group) {
     '',
     `**Members (${members.length}/${capDisplay(group?.maximumPlayers)}):**`,
     members.length ? members.map(memberLabel).join('\n') : '_none yet_',
+    '',
+    `**Queue (${group?.queueCount ?? queueMembers.length}):**`,
+    queueMembers.length ? queueMembers.map(memberLabel).join('\n') : '_none_',
   ].filter(Boolean).join('\n');
 
   let title = 'Looking For Group';
@@ -120,11 +124,23 @@ function buildSyncedGroupRow(groupId, group) {
     .setStyle(ButtonStyle.Success)
     .setDisabled(!isJoinableStatus(group?.status));
 
+  const queue = new ButtonBuilder()
+    .setCustomId(`${SYNCED_GROUP_BUTTON_PREFIX}:queue:${groupId}`)
+    .setLabel('Join Queue')
+    .setStyle(ButtonStyle.Primary)
+    .setDisabled(group?.status !== 'FULL');
+
   const leave = new ButtonBuilder()
     .setCustomId(`${SYNCED_GROUP_BUTTON_PREFIX}:leave:${groupId}`)
     .setLabel('Leave Group')
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(!isClosableStatus(group?.status));
+
+  const dequeue = new ButtonBuilder()
+    .setCustomId(`${SYNCED_GROUP_BUTTON_PREFIX}:dequeue:${groupId}`)
+    .setLabel('Leave Queue')
+    .setStyle(ButtonStyle.Secondary)
+    .setDisabled(!isClosableStatus(group?.status) || (group?.queueCount ?? 0) <= 0);
 
   const close = new ButtonBuilder()
     .setCustomId(`${SYNCED_GROUP_BUTTON_PREFIX}:close:${groupId}`)
@@ -132,7 +148,7 @@ function buildSyncedGroupRow(groupId, group) {
     .setStyle(ButtonStyle.Danger)
     .setDisabled(!isClosableStatus(group?.status));
 
-  return new ActionRowBuilder().addComponents(join, leave, close);
+  return new ActionRowBuilder().addComponents(join, queue, leave, dequeue, close);
 }
 
 async function applySyncedGroupUpdate(interaction, group, action = null) {
@@ -169,7 +185,7 @@ async function applySyncedGroupUpdate(interaction, group, action = null) {
 
 async function handleSyncedGroupButtonInteraction(interaction) {
   const [, action, groupId] = interaction.customId.split(':');
-  if (!['join', 'leave', 'close'].includes(action) || !groupId) {
+  if (!['join', 'queue', 'leave', 'dequeue', 'close'].includes(action) || !groupId) {
     return;
   }
 

@@ -24,3 +24,33 @@
   - shows queue count when a mirrored Discord-created group currently has people waiting
 - verified the edited bot-side JavaScript files with `node --check`
 - verified the frontend changes with `npm run build`
+- added canonical shared queue support for LFG groups in `supabase/migrations/20260806153000_add_canonical_lfg_queue_and_website_actions.sql`
+- extended shared LFG snapshots so website and Discord renders now receive:
+  - queue members by RSN
+  - total queue count
+  - queue-related permissions
+- updated shared LFG actions so the backend now supports:
+  - `queue`
+  - `dequeue`
+  - automatic promotion from queue into the main group when a spot opens
+- added authenticated website participation flow in `supabase/functions/lfg-website-action/index.ts`
+  - requires Discord OAuth on the site
+  - derives the Discord account from the authenticated Supabase session instead of trusting typed Discord usernames
+  - uses the supplied or saved RSN as the public-facing identity
+  - automatically chooses `join` or `queue` based on current live capacity
+- updated `src/pages/Landing.tsx` so public LFG cards now support website-side join/queue actions through a modal flow with Discord auth + RSN collection
+- updated mirrored Discord synced-group rendering in:
+  - `supabase/functions/process-lfg-discord-delivery/index.ts`
+  - `supabase/functions/discord-lfg-interactions/index.ts`
+  - `DiscordBotUpdated/Untitled/Tanglebot/src/utils/lfgSyncedPost.js`
+  so queue size and queue members are visible and queue-related button actions are exposed
+- changed shared LFG `join` behavior so a join attempt against an already-full shared group now queues the user instead of returning a hard `GROUP_FULL` failure
+- this now applies consistently to:
+  - RuneLite plugin shared-group joins
+  - synced Discord shared-group button/slash-command joins
+  - website shared-group joins
+- updated the shared in-memory reducer tests in `src/test/lfg.test.ts` to cover the new full-group queue-on-join behavior
+- updated the RuneLite plugin LFG success chat so it now reports the backend action message directly, including `Joined queue`
+- added `supabase/migrations/20260806170000_assign_default_user_role_on_auth_sync.sql` so authenticated site users are automatically assigned the standard `user` role when their `auth.users` row syncs, but existing `admin` role holders are left unchanged
+- included a backfill in that migration for already-synced users who currently have no `user_roles` row
+- local edge-function `deno check` could not be run because `deno` is not installed in this workspace
