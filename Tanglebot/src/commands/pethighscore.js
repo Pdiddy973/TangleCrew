@@ -121,9 +121,16 @@ function buildHeaderEmbed() {
     .setColor(EMBED_COLOR);
 }
 
-// The "# " markdown heading renders emoji noticeably larger than plain text,
-// same trick /updatedonations uses for its coin emoji.
-function buildEmbeds(entries) {
+// A mention only renders as a clickable chip if the viewer's client has the
+// user cached, which for a member who's left the guild it won't — falls back
+// to their last known display name so the leaderboard doesn't show raw
+// "<@id>" text for former members.
+function mentionOrName(entry, memberIds) {
+  return memberIds.has(entry.discordId) ? `<@${entry.discordId}>` : `**${entry.displayName}**`;
+}
+
+// The "# " markdown heading renders emoji noticeably larger than plain text.
+function buildEmbeds(entries, memberIds) {
   const header = buildHeaderEmbed();
 
   if (entries.length === 0) {
@@ -141,7 +148,7 @@ function buildEmbeds(entries) {
     const emojiLine = entry.petKeys.map(k => petEmoji(PET_BY_KEY.get(k))).join(' ');
     const petWord = entry.count === 1 ? 'pet' : 'pets';
     const medal = RANK_MEDALS[i] ? `${RANK_MEDALS[i]} ` : '';
-    return `${medal}<@${entry.discordId}> | **${entry.count}** ${petWord}\n# ${emojiLine}`;
+    return `${medal}${mentionOrName(entry, memberIds)} | **${entry.count}** ${petWord}\n# ${emojiLine}`;
   });
 
   const descriptions = [];
@@ -206,6 +213,7 @@ function packEmbedsIntoMessages(embeds) {
 // Fallback for stale stored message IDs (message deleted, data file reset
 // by a redeploy, etc.) — scans recent channel history for the bot's own
 // previous leaderboard post(s) so we can edit in place instead of spamming.
+// (Same recovery approach /donationhighscore uses.)
 async function findPreviousLeaderboardMessages(channel, botUserId) {
   const fetched = await channel.messages.fetch({ limit: 50 });
   return [...fetched.values()]
@@ -223,7 +231,11 @@ async function findPreviousLeaderboardMessages(channel, botUserId) {
 // between embeds just shows up correctly next post; no per-member state to patch.
 async function postLeaderboard(guild, channelId, entries, botUserId) {
   const channel = await guild.channels.fetch(channelId);
-  const groups = packEmbedsIntoMessages(buildEmbeds(entries));
+  // Warmed once per post so mentionOrName can tell current members from
+  // former ones without a fetch per leaderboard entry.
+  await guild.members.fetch().catch(() => null);
+  const memberIds = new Set(guild.members.cache.keys());
+  const groups = packEmbedsIntoMessages(buildEmbeds(entries, memberIds));
 
   const stored = readJson('pethighscores_message.json');
   const prevIds = Array.isArray(stored.messageIds) ? stored.messageIds : [];

@@ -14,7 +14,8 @@ const {
   handleLfgPostGroupButtonInteraction,
 } = require('../utils/lfgPost');
 const { ensureLfgStartPost } = require('../utils/lfgStartPage');
-const { refreshLeaderboardOnStartup } = require('../commands/pethighscore');
+const { refreshLeaderboardOnStartup: refreshPetLeaderboardOnStartup } = require('../commands/pethighscore');
+const { refreshLeaderboardOnStartup: refreshDonationLeaderboardOnStartup } = require('../commands/donationhighscore');
 
 // customId-prefix routing tables for InteractionCreate, one per interaction kind. errorReply is
 // optional — omitted for the honeypot button so a mis-click there stays silent instead of
@@ -74,7 +75,8 @@ function loadEvents(client) {
 
     await sendHoneypotStartupMessage(client, honeypotConfig);
     await ensureLfgStartPost(client);
-    await refreshLeaderboardOnStartup(client);
+    await refreshPetLeaderboardOnStartup(client);
+    await refreshDonationLeaderboardOnStartup(client);
   });
 
   client.on(Events.MessageCreate, async (message) => {
