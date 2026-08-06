@@ -116,7 +116,19 @@ function sizeFixed(n) {
   return [{ value: String(n), label: `${n} Players (Fixed)` }];
 }
 
-// Derives a role's stable customId/value identifier from its display label, e.g. "Royal Titans" -> "royal_titans".
+function summarizeSizeOptions(sizeOptions = []) {
+  const numericValues = sizeOptions
+    .map((option) => Number.parseInt(option.value, 10))
+    .filter((value) => Number.isFinite(value));
+
+  return {
+    maximumPlayers: numericValues.length ? Math.max(...numericValues) : null,
+    supportsMass: sizeOptions.some((option) => option.value === 'mass'),
+  };
+}
+
+// Derives a role's stable identifier (used in customIds and select-menu values) from its
+// display label, e.g. "Royal Titans" -> "royal_titans", "Vet'ion" -> "vetion".
 function slugify(label) {
   return label
     .toLowerCase()
@@ -198,6 +210,31 @@ for (const category of Object.values(CATEGORIES)) {
   for (const role of category.roles) {
     role.value = slugify(role.label);
   }
+}
+
+function buildDiscordLfgCatalog() {
+  return Object.entries(CATEGORIES).map(([key, category], categoryIndex) => ({
+    key,
+    displayName: category.label,
+    description: `${category.label} groups`,
+    enabled: true,
+    displayOrder: (categoryIndex + 1) * 10,
+    activities: category.roles.map((role, roleIndex) => {
+      const sizeSummary = summarizeSizeOptions(role.sizeOptions);
+      return {
+        key: role.value,
+        displayName: role.label,
+        discordRoleName: role.label,
+        description: null,
+        enabled: true,
+        displayOrder: (roleIndex + 1) * 10,
+        maximumPlayers: sizeSummary.maximumPlayers,
+        supportsMass: sizeSummary.supportsMass,
+        emoji: role.emoji ?? null,
+        colorHex: role.color ?? null,
+      };
+    }),
+  }));
 }
 
 // customId scheme used for all buttons here:
@@ -448,6 +485,7 @@ function chunkIntoRows(items, size) {
 
 module.exports = {
   CATEGORIES,
+  buildDiscordLfgCatalog,
   MENU_MESSAGE_LIFETIME_MS,
   buildMenuEmbed,
   buildCategoryButtonsRow,

@@ -1,0 +1,26 @@
+# What Was Done Today — 2026-08-06
+
+- reviewed the updated `DiscordBotUpdated/Untitled/Tanglebot` structure after the master-repo refresh
+- resolved remaining LFG merge conflicts in:
+  - `src/handlers/eventHandler.js`
+  - `src/utils/roleMenu.js`
+  - `src/utils/lfgPost.js`
+- preserved the existing Discord `/lfg-post` flow while keeping the shared RuneLite/Supabase bridge in place
+- restored backend mirroring for Discord-created groups and mirrored join/leave/close actions on legacy forum-thread groups
+- updated synced RuneLite group rendering so Discord thread names and embeds now reflect `OPEN`, `FULL`, `STARTED`, `CLOSED`, `CANCELLED`, and `EXPIRED` states correctly
+- updated the shared delivery worker in `supabase/functions/process-lfg-discord-delivery/index.ts` so it:
+  - forces stale-group expiration on each poll
+  - renames synced forum threads on every delivered state change, including join/leave capacity changes
+  - archives and locks terminal synced forum threads when the shared backend marks them closed or expired
+- adjusted the legacy `/lfg-post` thread-title countdown bucketing in `src/utils/lfgGroup.js` so full groups no longer keep a stale higher-hour label after the embed timestamp has already shifted to the next lower hour bucket
+- added backend queue metadata support for public/shared LFG groups:
+  - migration `supabase/migrations/20260806120000_add_public_lfg_queue_metadata.sql`
+  - edge function `supabase/functions/lfg-group-metadata/index.ts`
+  - bot bridge sync in `src/utils/lfgBackend.js` and `src/utils/lfgPost.js`
+- updated the public landing page `src/pages/Landing.tsx` so the website now:
+  - polls shared LFG groups more aggressively
+  - updates visible start/falloff timing labels between fetches
+  - reflects `OPEN`, `FULL`, and `STARTED` state changes from the backend
+  - shows queue count when a mirrored Discord-created group currently has people waiting
+- verified the edited bot-side JavaScript files with `node --check`
+- verified the frontend changes with `npm run build`

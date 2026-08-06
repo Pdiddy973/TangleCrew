@@ -120,6 +120,8 @@ Creates a post in a configured Forum Channel so members can find and join a grou
 4. Anyone can **Join** or **Leave** from the post. **Disband** (cancels immediately) is limited to current group members or Coordinator+ staff. Once the group hits its size cap it auto-closes (locks joining, pings "Good luck!") — and auto-reopens the moment someone leaves and frees up a spot.
 5. The post deletes itself automatically once its start time passes (15-minute minimum lifetime), 5 minutes after the group fills, or 30 minutes after everyone leaves an otherwise-still-open post.
 
+**Shared LFG sync:** when `SUPABASE_URL`, `LFG_PLUGIN_TOKEN`, and `LFG_DELIVERY_SECRET` are configured, Discord-created `/lfg-post` groups are mirrored into the shared Supabase LFG backend so the RuneLite plugin can see them, and the bot syncs its category/activity catalog from `src/utils/roleMenu.js` into Supabase on startup.
+
 **Setup:** requires `LFG_FORUM_CHANNEL_ID` set to a Forum Channel, the same auto-created activity roles as `/lfg-roles`, and the bot's role with **Manage Threads** (needed to rename/delete forum posts) in addition to the other permissions below.
 
 ---
