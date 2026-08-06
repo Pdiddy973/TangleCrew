@@ -17,6 +17,7 @@
     "csv-parse": "^7.0.0",
     "discord.js": "^14.16.0",
     "dotenv": "^16.4.5",
-    "gif-encoder-2": "^1.0.5"
+    "gif-encoder-2": "^1.0.5",
+    "googleapis": "^144.0.0"
   }
 }
