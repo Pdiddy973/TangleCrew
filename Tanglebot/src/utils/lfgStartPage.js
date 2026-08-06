@@ -1,6 +1,8 @@
 const { ChannelType, ChannelFlags, EmbedBuilder } = require('discord.js');
 const { readJson, writeJson, truncate } = require('./db');
 const { CATEGORIES, emojiLabel, isAlreadyGoneError, notifyAdminLog } = require('./roleMenu');
+const { DEFAULT_EMBED_COLOR } = require('./embedColor');
+const { WIDTH_PAD } = require('./embedWidth');
 
 // Same forum /lfg-post creates group threads in — the start page lives there too.
 const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
@@ -15,15 +17,10 @@ const MAX_EMBED_FIELDS = 25;
 const MAX_FIELD_VALUE_LENGTH = 1024;
 
 // Shared accent color for all three embeds, so they read as one post despite being built separately.
-const EMBED_COLOR = 0x006400;
+const EMBED_COLOR = DEFAULT_EMBED_COLOR;
 
 // Thin rule separating a category's name from its activity list — see buildActivitiesEmbed.
 const FIELD_DIVIDER = '─'.repeat(20);
-
-// U+2800 (braille blank) renders as nothing but isn't whitespace, so it doesn't get trimmed like a
-// space would. A long run of it in a footer forces that embed to Discord's max render width, so the
-// text-only embeds below match the width the instructions embed gets from its gif.
-const WIDTH_PAD = '⠀'.repeat(120);
 
 // Pulled from the repo's master branch (not a pinned commit) so pushing a new gif there
 // updates the embed automatically — no redeploy or code change needed.
