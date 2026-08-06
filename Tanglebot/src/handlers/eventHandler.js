@@ -14,6 +14,8 @@ const {
   handleLfgPostGroupButtonInteraction,
 } = require('../utils/lfgPost');
 const { ensureLfgStartPost } = require('../utils/lfgStartPage');
+const { refreshLeaderboardOnStartup: refreshPetLeaderboardOnStartup } = require('../commands/pethighscore');
+const { refreshLeaderboardOnStartup: refreshDonationLeaderboardOnStartup } = require('../commands/donationhighscore');
 const { syncDiscordCatalog, isConfigured: isLfgBackendConfigured } = require('../utils/lfgBackend');
 const { startLfgDeliveryWorker } = require('../utils/lfgDeliveryWorker');
 const { handleSyncedGroupButtonInteraction } = require('../utils/lfgSyncedPost');
@@ -89,7 +91,8 @@ function loadEvents(client) {
 
     await sendHoneypotStartupMessage(client, honeypotConfig);
     await ensureLfgStartPost(client);
-    await refreshLeaderboardOnStartup(client);
+    await refreshPetLeaderboardOnStartup(client);
+    await refreshDonationLeaderboardOnStartup(client);
   });
 
   client.on(Events.MessageCreate, async (message) => {

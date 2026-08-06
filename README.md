@@ -51,38 +51,51 @@ Spins an animated prize wheel and picks one or more random winners from a list o
 
 ---
 
-### 💰 `/updatedonations` — Donation Leaderboard
+### 💰 `/donationhighscore` — Donation High Scores
 
-Posts (or updates) a leaderboard message ranking clan members by total donations, and assigns donation tier roles based on configurable GP thresholds.
+Tracks each member's total GP donated in a Google Sheet the bot both reads and writes, posts a ranked leaderboard embed, and assigns donation tier roles (Zenyte/Onyx/Dragonstone/Diamond/Ruby) based on configurable GP thresholds.
 
 **When to use it:**
-- Keeping a live, up-to-date donation leaderboard pinned in a channel
+- Logging a donation for a member and having the leaderboard update automatically
+- Keeping a live, sorted "who's donated the most" leaderboard pinned in a channel
 - Automatically granting/revoking donation tier roles as totals change
 
-**How it works:**
-1. Downloads the donation spreadsheet from the configured Google Sheets URL.
-2. Reads the `Name`, `DiscordID`, and `Donated` columns. Rows with the same Discord ID are merged together (their totals are summed) before ranking.
-3. Sorts donors by total donated, highest first.
-4. For each donor, assigns the highest donation tier role they qualify for, plus every tier role below it (tiers stack — a Zenyte donor also keeps Gold and Diamond). Roles for tiers no longer met are removed.
-5. Builds a leaderboard message with a 💰 "Donation High Scores" header, a total donated line, and one line per donor with their tier emoji, mention, and full donated total (e.g. `150,000,000`). The top donor's name is shown enlarged.
-6. Posts the leaderboard to the configured channel, or edits the existing leaderboard message(s) in place on subsequent runs (no duplicates). If the leaderboard is too long for one message, it's split across multiple messages, which are also kept in sync on later runs. If the previously tracked message(s) can't be found (e.g. deleted, or the bot's local state was reset), it falls back to scanning the channel's recent history for its own last leaderboard post(s) and edits those instead of posting duplicates.
-7. Replies with a summary of role changes, including a "New roles granted" list naming each member who reached a new donation tier this run.
+**Subcommands:**
 
-Restricted to users with the **Templar** role.
+| Subcommand | Description |
+|------------|-------------|
+| `add` | Adds an amount to a member's donation total |
+| `remove` | Subtracts an amount from a member's donation total (for fixing mistakes) |
 
-**Setup:**
+Both take a `player` (the member) and an `amount` option — raw numbers or shorthand like `10m`, `10k`, `1b`, or `10.1m` all work.
 
-1. Create a Google Sheet with `Name`, `DiscordID`, and `Donated` columns (see `Tanglebot/example/donations_template.xlsx` for the expected format). `Donated` accepts plain numbers or shorthand like `150M`, `75m`, or `300,000,000`.
-2. Share the sheet: **Share → Anyone with the link → Viewer**.
-3. Set `DONATIONS_SHEET_URL` to the sheet's URL (any Google Sheets link format works — edit, share, or export links are all normalised automatically).
+Restricted to users with the **Templar** role. Only loaded if `DONATIONS_SHEET_ID`, `DONATIONS_CHANNEL_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON` are set.
+
+<details>
+<summary><strong>How it works</strong></summary>
+
+1. Reads the member's current row from the configured Google Sheet (by Discord ID), or starts a new one if they don't have a row yet.
+2. Adds or subtracts the amount from their total (`remove` clamps at 0 rather than going negative).
+3. Writes the updated row back to the sheet.
+4. Assigns the highest donation tier role the member's new total qualifies for, plus every tier role below it (tiers stack — a Zenyte donor also keeps Onyx, Dragonstone, Diamond, and Ruby), and removes any tier role no longer qualified for. Tiers left without a role ID configured are skipped.
+5. Re-sorts every member by total donated, highest first, and rebuilds the leaderboard embed: the combined total across every donor as the heading (in place of a static title), then one line per member with their highest earned tier's emoji (nothing if they haven't reached one), their mention, and their total — enlarged as a "# " heading for the top donor, a smaller "### " heading for everyone else. A member who's left the server shows their last known name instead of a dead mention.
+6. Posts the leaderboard to the configured channel, or edits the existing leaderboard message(s) in place (no duplicates), the same message-recovery behavior as `/pethighscore` if the tracked message is missing.
+
+</details>
+
+<details>
+<summary><strong>Setup</strong></summary>
+
+1. Make a copy of `Tanglebot/example/donationhighscores_template.xlsx` as your live Google Sheet — open [sheets.google.com](https://sheets.google.com), **File → Import → Upload**, select the `.xlsx`, and when prompted choose **Create new spreadsheet** (not "Insert new sheet(s)" or just opening the uploaded file from Drive — those can leave it in Office-compatibility mode, which the Sheets API can't read/write and fails with `must not be an Office file`). This becomes your sheet, already set up with the tab the bot expects by exact name: `Donations` (`DiscordID`, `DisplayName`, `Donated` columns). Don't rename the tab. Clear the example rows if you don't want the sample data.
+2. Follow [Google service account](#google-service-account) below to create a service account (or reuse one you've already set up) and share the sheet with it as an **Editor**.
+3. Set `DONATIONS_SHEET_ID` to the sheet's ID (from its URL: `docs.google.com/spreadsheets/d/<THIS_PART>/edit`).
 4. Set `DONATIONS_CHANNEL_ID` to the channel where the leaderboard should be posted.
-5. Optionally set `DONATION_GOLD_THRESHOLD`, `DONATION_DIAMOND_THRESHOLD`, and `DONATION_ZENYTE_THRESHOLD` (defaults: 75M / 150M / 300M).
-6. Optionally set `DONATION_GOLD_ROLE_ID`, `DONATION_DIAMOND_ROLE_ID`, and `DONATION_ZENYTE_ROLE_ID` to have the bot manage tier roles. Leave a tier's role ID blank to skip role management for that tier.
-7. Optionally set `DONATION_EMOJI_GOLD`, `DONATION_EMOJI_DIAMOND`, `DONATION_EMOJI_ZENYTE`, and `DONATION_EMOJI_COINS` to custom emoji IDs for the tier badges and the total donated line.
+5. Optionally set `DONATION_ZENYTE_THRESHOLD`, `DONATION_ONYX_THRESHOLD`, `DONATION_DRAGONSTONE_THRESHOLD`, `DONATION_DIAMOND_THRESHOLD`, and `DONATION_RUBY_THRESHOLD` (defaults: 1B / 600M / 300M / 150M / 75M).
+6. Optionally set `DONATION_ZENYTE_ROLE_ID`, `DONATION_ONYX_ROLE_ID`, `DONATION_DRAGONSTONE_ROLE_ID`, `DONATION_DIAMOND_ROLE_ID`, and `DONATION_RUBY_ROLE_ID` to have the bot manage tier roles. Leave a tier's role ID blank to skip role management for that tier.
 
 > **Note:** For role management to work, the bot needs the **Manage Roles** permission and its highest role must be positioned **above** the donation tier roles in Server Settings → Roles.
 
-This command is only loaded if `DONATIONS_SHEET_URL` and `DONATIONS_CHANNEL_ID` are set.
+</details>
 
 ---
 
@@ -113,8 +126,8 @@ Restricted to users with the **Templar** role. Only loaded if `PET_HIGHSCORES_SH
 1. Reads the member's current row from the configured Google Sheet (by Discord ID), or starts a new one if they don't have a row yet.
 2. Adds or removes the pet, keeping each member's pet list stored in a fixed order (the order pets are listed on the `Pets` sheet tab) regardless of the order they were logged in.
 3. Writes the updated row back to the sheet.
-4. Re-sorts every member by pet count, highest first, and rebuilds the leaderboard embed: one block per member showing `@mention — N pets` followed by a large row of that member's pet emojis (using the same "# heading" trick `/updatedonations` uses to enlarge emoji).
-5. Posts the leaderboard to the configured channel, or edits the existing leaderboard message(s) in place (no duplicates), the same message-recovery behavior as `/updatedonations` if the tracked message is missing.
+4. Re-sorts every member by pet count, highest first, and rebuilds the leaderboard embed: one block per member showing `@mention — N pets` followed by a large row of that member's pet emojis (using the "# heading" markdown trick to enlarge emoji). A member who's left the server shows their last known name instead of a dead mention.
+5. Posts the leaderboard to the configured channel, or edits the existing leaderboard message(s) in place (no duplicates), the same message-recovery behavior as `/donationhighscore` if the tracked message is missing.
 6. If the member's new pet count crosses `PET_MASTER_THRESHOLD` in either direction, grants or revokes the Pet Master role.
 
 </details>
@@ -271,7 +284,7 @@ Use `/honeypot testmode true` to dry-run the trap(s): triggering it still posts 
 
 - [Node.js](https://nodejs.org/) v18 or later
 - A Discord bot token and application — create one at [discord.com/developers](https://discord.com/developers/applications)
-- The Discord bot's **Server Members Intent** enabled in the Developer Portal for `/updatedonations` and `/pethighscore`
+- The Discord bot's **Server Members Intent** enabled in the Developer Portal for `/donationhighscore` and `/pethighscore`
 - The Discord bot's **Message Content Intent** enabled in the Developer Portal if using KC/drop proof intake
 
 ### Google service account
@@ -330,6 +343,10 @@ LFG_FORUM_CHANNEL_ID=your_lfg_forum_channel_id
 PET_HIGHSCORES_SHEET_ID=your_sheet_id
 PET_HIGHSCORES_CHANNEL_ID=your_pethighscores_channel_id
 PET_MASTER_ROLE_ID=your_pet_master_role_id
+
+# Optional donation high scores (/donationhighscore)
+DONATIONS_SHEET_ID=your_sheet_id
+DONATIONS_CHANNEL_ID=your_donations_channel_id
 
 # Optional announcement cleanup
 ANNOUNCEMENT_CHANNEL_ID=your_announcement_channel_id
