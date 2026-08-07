@@ -55,4 +55,4 @@ async function appendRow(sheetId, range, values) {
   });
 }
 
-module.exports = { getSheetsClient, getRows, updateRow, appendRow };
+module.exports = { getRows, updateRow, appendRow };

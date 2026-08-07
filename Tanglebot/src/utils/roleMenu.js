@@ -487,7 +487,6 @@ module.exports = {
   ensureRoleExists,
   lfgRoleName,
   notifyAdminLog,
-  notifyAdminLogAndReply,
   scheduleReplyCleanup,
   isAlreadyGoneError,
   replyEphemeral,
