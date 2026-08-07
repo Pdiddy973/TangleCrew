@@ -449,16 +449,6 @@ function isValidEmoji(emoji) {
   return isSnowflakeEmoji(emoji) || /[^\x00-\x7F]/.test(emoji);
 }
 
-// Pasting a copied custom emoji carries the full <:name:ID> / <a:name:ID> markup as text, not
-// the bare ID CATEGORIES expects — this pulls the ID back out so a suggester can just paste
-// instead of digging up the ID by hand. Anything else (a bare ID, a plain unicode character,
-// garbage) passes through untouched. Modal text fields have no emoji-picker button of their own.
-function normalizeEmojiInput(text) {
-  const trimmed = (text ?? '').trim();
-  const customEmojiMatch = trimmed.match(/^<a?:\w+:(\d{15,25})>$/);
-  return customEmojiMatch ? customEmojiMatch[1] : trimmed;
-}
-
 // A real color is a 6-digit hex string like "#006400" — rejects placeholders, empty strings, and anything left unset.
 function isValidColor(color) {
   return typeof color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(color);
@@ -506,5 +496,4 @@ module.exports = {
   emojiLabel,
   isValidEmoji,
   isValidColor,
-  normalizeEmojiInput,
 };
