@@ -9,8 +9,10 @@ const { followUpEphemeral, replyEphemeral, isAlreadyGoneError } = require('./rol
 
 const SYNCED_GROUP_BUTTON_PREFIX = 'lfgsyncgroup';
 
+// FULL is included here too — the backend's `join` action already queues the caller instead of
+// erroring once a group is full, so Join Group is the only button needed either way.
 function isJoinableStatus(status) {
-  return status === 'OPEN' || status === 'STARTED';
+  return status === 'OPEN' || status === 'FULL' || status === 'STARTED';
 }
 
 function isClosableStatus(status) {
@@ -124,23 +126,11 @@ function buildSyncedGroupRow(groupId, group) {
     .setStyle(ButtonStyle.Success)
     .setDisabled(!isJoinableStatus(group?.status));
 
-  const queue = new ButtonBuilder()
-    .setCustomId(`${SYNCED_GROUP_BUTTON_PREFIX}:queue:${groupId}`)
-    .setLabel('Join Queue')
-    .setStyle(ButtonStyle.Primary)
-    .setDisabled(group?.status !== 'FULL');
-
   const leave = new ButtonBuilder()
     .setCustomId(`${SYNCED_GROUP_BUTTON_PREFIX}:leave:${groupId}`)
     .setLabel('Leave Group')
     .setStyle(ButtonStyle.Secondary)
     .setDisabled(!isClosableStatus(group?.status));
-
-  const dequeue = new ButtonBuilder()
-    .setCustomId(`${SYNCED_GROUP_BUTTON_PREFIX}:dequeue:${groupId}`)
-    .setLabel('Leave Queue')
-    .setStyle(ButtonStyle.Secondary)
-    .setDisabled(!isClosableStatus(group?.status) || (group?.queueCount ?? 0) <= 0);
 
   const close = new ButtonBuilder()
     .setCustomId(`${SYNCED_GROUP_BUTTON_PREFIX}:close:${groupId}`)
@@ -148,7 +138,7 @@ function buildSyncedGroupRow(groupId, group) {
     .setStyle(ButtonStyle.Danger)
     .setDisabled(!isClosableStatus(group?.status));
 
-  return new ActionRowBuilder().addComponents(join, queue, leave, dequeue, close);
+  return new ActionRowBuilder().addComponents(join, leave, close);
 }
 
 async function applySyncedGroupUpdate(interaction, group, action = null) {
@@ -185,7 +175,7 @@ async function applySyncedGroupUpdate(interaction, group, action = null) {
 
 async function handleSyncedGroupButtonInteraction(interaction) {
   const [, action, groupId] = interaction.customId.split(':');
-  if (!['join', 'queue', 'leave', 'dequeue', 'close'].includes(action) || !groupId) {
+  if (!['join', 'leave', 'close'].includes(action) || !groupId) {
     return;
   }
 
