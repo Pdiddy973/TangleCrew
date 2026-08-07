@@ -185,8 +185,11 @@ const CATEGORIES = {
     buttonEmoji: '1534226735074250842',
     roles: [
       { label: 'CoX', emoji: '1534395684277715005', color: '#17A398', sizeOptions: sizeRangeWithMass(7) },
+      { label: 'CoXCM', emoji: '1535325448093835424', color: '#17A398', sizeOptions: sizeRange(7) },
       { label: 'ToB', emoji: '1534395699213631569', color: '#7A0C0C', sizeOptions: sizeRange(5) },
-      { label: 'ToA', emoji: '1534395660349079663', color: '#D2A679', sizeOptions: sizeRange(8) },
+      { label: 'HMToB', emoji: '1535325447045255168', color: '#7A0C0C', sizeOptions: sizeRange(5) },
+      { label: 'ToA', emoji: '1535325450300301463', color: '#D2A679', sizeOptions: sizeRange(8) },
+      { label: 'ToAExpert', emoji: '1535325449003991141', color: '#D2A679', sizeOptions: sizeRange(8) },
     ],
   },
   minigames: {
