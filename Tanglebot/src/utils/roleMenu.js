@@ -451,7 +451,7 @@ async function ensureRoleExists(guild, name) {
     const role = await guild.roles.create({
       name: lfgRoleName(name),
       mentionable: true,
-      ...(isValidColor(roleConfig?.color) ? { color: roleConfig.color } : {}),
+      ...(isValidColor(roleConfig?.color) ? { colors: { primaryColor: roleConfig.color } } : {}),
       ...roleIconOptions(guild, roleConfig?.emoji),
       reason: 'Auto-created for the LFG system (roleMenu.js CATEGORIES)',
     });
@@ -490,7 +490,7 @@ async function syncRoleAppearance(guild) {
 
       const edits = {};
       if (isValidColor(roleConfig.color) && role.hexColor.toLowerCase() !== roleConfig.color.toLowerCase()) {
-        edits.color = roleConfig.color;
+        edits.colors = { primaryColor: roleConfig.color };
       }
       if (supportsIcons && isValidEmoji(roleConfig.emoji)) {
         Object.assign(edits, roleIconOptions(guild, roleConfig.emoji));
