@@ -221,7 +221,7 @@ No environment variables are required — activity roles are auto-created on dem
 <summary><strong>How it works</strong></summary>
 
 1. Running the command opens a private (ephemeral) menu with three categories: **Bosses**, **Raids**, and **Minigames**.
-2. Clicking a category opens a private submenu listing that category's specific activities (e.g. Yama, CoX, Tempoross), shown with pet emojis where configured.
+2. Clicking a category opens a private submenu listing that category's specific activities (e.g. Yama, CoX, Tempoross), sorted alphabetically and shown with pet emojis where configured.
 3. Clicking an activity toggles that role on or off — selected roles turn red and stay red until clicked again.
 4. Once a member has a role, anyone can `@mention` it to notify everyone who's opted in.
 5. A **Clear All LFG Roles** button on the main menu removes every `LFG-` role the member has in one click.
@@ -231,7 +231,7 @@ No environment variables are required — activity roles are auto-created on dem
 <details>
 <summary><strong>Setup</strong></summary>
 
-The bot auto-creates any missing activity role (prefixed `LFG-`, e.g. `LFG-Yama`; full list in `src/utils/roleMenu.js`) the first time it's needed — no manual role setup required. Needs the **Manage Roles** permission, with the bot's own role positioned above the `LFG-` roles once created. Optionally, upload custom pet emojis and add their IDs for a nicer-looking menu.
+The bot auto-creates any missing activity role (prefixed `LFG-`, e.g. `LFG-Yama`; full list in `src/utils/roleMenu.js`) the first time it's needed — no manual role setup required. Each role is colored and (on servers at Boost Level 2+, which unlocks role icons) icon-tagged to match its `CATEGORIES` entry as soon as it's created. On startup, if `CLAN_ID` is set, the bot also re-syncs color/icon onto every already-existing `LFG-` role, so a later edit to `CATEGORIES` reaches roles created before the change. Needs the **Manage Roles** permission, with the bot's own role positioned above the `LFG-` roles once created. Optionally, upload custom pet emojis and add their IDs for a nicer-looking menu.
 
 </details>
 
@@ -263,8 +263,8 @@ Creates a post in a configured Forum Channel so members can find and join a grou
 
 1. Running the command opens a private, step-by-step menu: **Category** (Bosses / Raids / Minigames) → **Activity** → **Group Size** (auto-ranged to that activity's max — some activities also offer a "Mass" option) → **Start Time** (relative offsets like *Now*, *15 Min*, *1 Hour* — no timezone guesswork required).
 2. After the last selection, an optional **description** prompt appears.
-3. The bot creates a forum post pinging the matching role, titled `[Open] - Category: Activity - Start: X` — and an embed with the full details (including who started it), with a live member list that updates on every join/leave.
-4. Anyone can **Join** or **Leave** from the post. Once the group hits its size cap it auto-closes (locks joining, pings "Good luck!"); if people are queued when a spot frees up, the front of the queue gets a 5-minute **Accept/Decline** offer before the spot opens back up to everyone else.
+3. The bot creates a forum post pinging the matching role, titled `[Open] - Category: Activity - Start: X`, with the full details as the post's plain-text body (including who started it) and a live member list that updates on every join/leave.
+4. Anyone can **Join** or **Leave** from the post. Someone joining, leaving, or taking a freed spot posts a quiet notice with no group-wide ping — routine churn, not something everyone needs pinged for. Once the group hits its size cap it auto-closes (locks joining, pings everyone "Good luck!"); if people are queued when a spot frees up, the front of the queue gets a 5-minute **Accept/Decline** offer before the spot opens back up to everyone else.
 5. **Disband** is limited to current group members or Coordinator+ staff, and doesn't close the post immediately — it posts a 1-minute closing notice with a **Cancel Disband** button first, in case of a mis-click.
 6. An empty group (everyone's left, nobody rejoins) auto-closes after 15 minutes. Any active group also gets a keep-alive check every 2 hours — if nobody clicks **Still Here** within 10 minutes, it auto-disbands the same way a manual Disband would. There's no cleanup tied to the group's start time passing or to it filling up — a full or "started" group just stays up until it empties out or someone disbands it.
 7. On startup, the bot also posts (or updates) a pinned "Start Here" thread in the forum channel with a walkthrough and a summary of these automations, so members don't need this README to understand the buttons.
@@ -291,7 +291,7 @@ Creates a post in a configured Forum Channel so members can find and join a grou
 
 **Disband grace period:** clicking Disband Group posts a "closing in 1 minute" notice with a **Cancel Disband** button rather than closing instantly — anyone with standing (a current member, someone queued, or Coordinator+) can cancel it before the timer runs out.
 
-**Plugin-synced posts:** groups created from the RuneLite plugin (delivered via the reverse Supabase sync) render as their own Discord threads with a different button set from native `/lfg-post` groups — separate **Join Group**, **Join Queue**, **Leave Group**, **Leave Queue**, and **Close Group** buttons, each individually enabled/disabled based on the group's synced status (`OPEN`/`FULL`/`STARTED`/`CLOSED`/`CANCELLED`/`EXPIRED`), instead of the single auto-detecting Join/Leave pair used on Discord-native groups.
+**Plugin-synced posts:** groups created from the RuneLite plugin (delivered via the reverse Supabase sync) render as their own Discord threads with a different button set from native `/lfg-post` groups — separate **Join Group**, **Leave Group**, and **Close Group** buttons, each individually enabled/disabled based on the group's synced status (`OPEN`/`FULL`/`STARTED`/`CLOSED`/`CANCELLED`/`EXPIRED`). **Join Group** stays enabled while `FULL` too — the backend's `join` action queues the caller automatically once a group is full, so there's no separate queue button to click.
 
 </details>
 
@@ -505,7 +505,7 @@ OWNER_ID=your_owner_role_id
 ```
 
 - `DISCORD_BOT_TOKEN` — the bot refuses to start without this one.
-- `CLIENT_ID` and `CLAN_ID` — required by `npm run deploy` to register slash commands with Discord; without them no `/` command works even if the bot process is running.
+- `CLIENT_ID` and `CLAN_ID` — required by `npm run deploy` to register slash commands with Discord; without them no `/` command works even if the bot process is running. `CLAN_ID` is also read at bot startup to run the `LFG-` role color/icon sync described under [`/lfg-roles`](#-lfg-roles--event-notification-roles) — leave it unset and that sync is skipped (deploy still needs it separately).
 - `OWNER_ID` — the Owner role's ID, for reference; not currently read by any command.
 
 If `/submission setintakeurl` has been used, its locally stored override takes precedence over `SUPABASE_DISCORD_KC_INTAKE_URL` from the [KC and Drop Proof Intake](#kc-and-drop-proof-intake) section.

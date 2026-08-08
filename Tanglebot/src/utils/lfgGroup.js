@@ -1,5 +1,4 @@
 const {
-  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -42,9 +41,8 @@ function parseSizeCap(value) {
 }
 
 // An offset from now (in minutes), not an absolute clock time — sidesteps timezone ambiguity, since
-// "1 Hour from now" means the same thing to everyone. The epoch is resolved fresh at
-// post-creation time (resolveTimeEpoch), and Discord's <t:...> format auto-localizes the
-// posted embed to each viewer's own timezone and clock format.
+// "1 Hour from now" means the same thing to everyone. Resolved fresh at post-creation time
+// (resolveTimeEpoch); Discord's <t:...> format then auto-localizes it per viewer.
 const TIME_OFFSET_OPTIONS = [
   { value: '0', label: 'Now' },
   { value: '15', label: '15 Min' },
@@ -63,7 +61,7 @@ function findTimeOption(value) {
 
 // Thread titles cannot use Discord's live relative timestamp formatter, so choose the closest
 // human label ourselves. Switching at the midpoint between neighboring labels keeps the title in
-// line with the embed's <t:...:R> wording instead of leaving "2 Hours" up until the exact 60m mark.
+// line with the main post's own <t:...:R> wording instead of leaving "2 Hours" up until the exact 60m mark.
 const COUNTDOWN_BUCKETS = [
   { minutes: 5, label: '5 Min' },
   ...TIME_OFFSET_OPTIONS.filter((o) => parseInt(o.value, 10) >= 15).map((o) => ({ minutes: parseInt(o.value, 10), label: o.label })),
@@ -126,19 +124,11 @@ function resolveTimeEpoch(offsetMinutesValue) {
   return Math.floor(Date.now() / 1000) + parseInt(offsetMinutesValue, 10) * 60;
 }
 
-// True only when every spot is actually occupied — not the same thing as status === 'closed', which
-// also covers "a spot freed up but it's being held for the queue" (see advanceQueueOrReopen
-// in lfgPost.js). During that reservation window there IS an open spot, just not a public one, so it
-// shouldn't read as full.
+// True only when every spot is actually occupied — not the same as status === 'closed', which also
+// covers a spot held for the queue (see advanceQueueOrReopen in lfgPost.js). During that reservation
+// window there IS an open spot, just not a public one, so it shouldn't read as full.
 function isGroupFull(group) {
   return group.sizeCap !== Infinity && group.members.size >= group.sizeCap;
-}
-
-// Full shows green regardless of activity color — a status signal, not branding. lfgPost.js's
-// notification embed uses the same color so they always match. group.color is validated
-// before the group is created (see lfgPost.js), so it's always set here.
-function resolveGroupColor(group) {
-  return isGroupFull(group) ? 0x2ecc71 : group.color;
 }
 
 // ---- Group post building blocks, used by lfgPost.js ----
@@ -170,7 +160,7 @@ function buildJoinButton(groupId) {
 
 // Disband is available regardless of open/closed status — a full (or queue-reserved) group is still
 // a group someone might need to shut down, not just a recruiting one. The row is otherwise identical
-// either way, so unlike buildGroupEmbed this doesn't need the group's status at all.
+// either way, so unlike buildGroupText this doesn't need the group's status at all.
 function buildGroupRow(groupId) {
   const join = buildJoinButton(groupId);
   const startNow = buildStartNowButton(groupId);
@@ -224,31 +214,31 @@ function buildKeepAliveRow(groupId) {
   return new ActionRowBuilder().addComponents(stillHere);
 }
 
-// "Mass" for an uncapped group, otherwise the numeric cap — shared by the embed and the main post's
-// content line (see buildMainPostContent in lfgPost.js) so they never disagree on how a
-// group's size reads.
+// "Mass" for an uncapped group, otherwise the numeric cap.
 function formatCapacity(group) {
   return group.sizeCap === Infinity ? 'Mass' : String(group.sizeCap);
 }
 
-function buildGroupEmbed(group) {
+// The entire main post body as plain text — role ping first (so it actually notifies), then
+// everything that used to live in the embed. Edited on every membership change (see updateMainPost
+// / updateGroupMessage in lfgPost.js).
+function buildGroupText(group) {
   const capDisplay = formatCapacity(group);
   const memberLines = [...group.members].map((id) => `<@${id}>`).join('\n');
 
   // group.emoji is validated before the group is created (see lfgPost.js), so it's always set here.
-  let title = `${emojiMarkup(group.emoji)} Looking For Group`;
-  const color = resolveGroupColor(group);
-  if (isGroupFull(group)) {
-    title = '🔒 Looking For Group — Full';
-  }
+  const pingLine = [`<@&${group.roleId}>`, emojiMarkup(group.emoji)].filter(Boolean).join(' ');
+  const headline = isGroupFull(group) ? '🔒 **Looking For Group — Full**' : '**Looking For Group**';
 
-  const descLines = [
+  const lines = [
+    pingLine,
+    headline,
     `**Activity:** ${group.roleLabel}`,
     `**Start:** <t:${group.timeEpoch}:t> (<t:${group.timeEpoch}:R>)`,
     `**Group Size:** ${group.sizeLabel}`,
   ];
-  if (group.description) descLines.push(`**Description:** ${group.description}`);
-  descLines.push('', `**Members (${group.members.size}/${capDisplay}):**`, memberLines || '_none yet_');
+  if (group.description) lines.push('**Description:**', group.description);
+  lines.push('', `**Members (${group.members.size}/${capDisplay}):**`, memberLines || '_none yet_');
 
   // Numbered in join order (group.queue is always FIFO — see advanceQueueOrReopen in lfgPost.js),
   // so position in this list is exactly how many people are ahead of you.
@@ -256,14 +246,11 @@ function buildGroupEmbed(group) {
     const queueLines = group.queue
       .map((id, i) => `${i + 1}. <@${id}>${group.pendingOfferUserId === id ? ' 🎟️ _(offer pending)_' : ''}`)
       .join('\n');
-    descLines.push('', `**Queue (${group.queue.length}):**`, queueLines);
+    lines.push('', `**Queue (${group.queue.length}):**`, queueLines);
   }
 
-  return new EmbedBuilder()
-    .setTitle(title)
-    .setDescription(descLines.join('\n'))
-    .setColor(color)
-    .setFooter({ text: `Started by ${group.creatorTag}` });
+  lines.push('', `_Started by ${group.creatorTag}_`);
+  return lines.join('\n');
 }
 
 function makeGroupId() {
@@ -284,13 +271,12 @@ module.exports = {
   resolveTimeEpoch,
   describeStartCountdown,
   computeCountdownRefreshDelay,
-  buildGroupEmbed,
+  buildGroupText,
   buildGroupRow,
   buildQueueOfferRow,
   buildCancelDisbandRow,
   buildKeepAliveRow,
   formatCapacity,
   makeGroupId,
-  resolveGroupColor,
   isGroupFull,
 };

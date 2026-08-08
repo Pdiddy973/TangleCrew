@@ -7,7 +7,7 @@ const {
   loadHoneypotConfig,
   sendHoneypotStartupMessage,
 } = require('../utils/honeypot');
-const { handleRoleMenuButtonInteraction } = require('../utils/roleMenu');
+const { handleRoleMenuButtonInteraction, syncRoleAppearance } = require('../utils/roleMenu');
 const {
   handleLfgPostSelectInteraction,
   handleLfgPostModalSubmit,
@@ -93,6 +93,18 @@ function loadEvents(client) {
     await ensureLfgStartPost(client);
     await refreshPetLeaderboardOnStartup(client);
     await refreshDonationLeaderboardOnStartup(client);
+
+    if (process.env.CLAN_ID) {
+      try {
+        const guild = await client.guilds.fetch(process.env.CLAN_ID);
+        const { updated, failed } = await syncRoleAppearance(guild);
+        if (updated.length || failed.length) {
+          console.log(`[LFG] Role appearance sync: ${updated.length} updated, ${failed.length} failed.`);
+        }
+      } catch (err) {
+        console.error('[LFG] Role appearance sync failed:', err.message);
+      }
+    }
   });
 
   client.on(Events.MessageCreate, async (message) => {

@@ -6,8 +6,6 @@ const {
   TextInputStyle,
   MessageFlags,
   ChannelType,
-  EmbedBuilder,
-  Colors,
 } = require('discord.js');
 const { truncate, hasAnyRole } = require('./db');
 const {
@@ -21,14 +19,12 @@ const {
   TIME_OFFSET_OPTIONS,
   findTimeOption,
   resolveTimeEpoch,
-  buildGroupEmbed,
+  buildGroupText,
   buildGroupRow,
   buildQueueOfferRow,
   buildCancelDisbandRow,
   buildKeepAliveRow,
-  formatCapacity,
   makeGroupId,
-  resolveGroupColor,
   isGroupFull,
   describeStartCountdown,
   computeCountdownRefreshDelay,
@@ -43,7 +39,6 @@ const {
   followUpEphemeral,
   isValidColor,
   isValidEmoji,
-  emojiMarkup,
 } = require('./roleMenu');
 const {
   createGroup: createBackendGroup,
@@ -96,6 +91,18 @@ async function syncBackendQueueCount(group) {
   } catch (err) {
     console.error(`[LFG] Could not sync queue count for group ${group.id}:`, err.message);
   }
+}
+
+// Best-effort mirror — the Discord-side action already went through, so there's nothing to roll
+// back here. But a silent failure means the shared backend just drifted out of sync unnoticed,
+// unlike a creation failure (which aborts the post) — this is the only place admins find out.
+async function notifyBackendMirrorFailure(interaction, group, actionLabel, err) {
+  console.error(`[LFG] Could not mirror ${actionLabel} for group ${group.id}:`, err.message);
+  await notifyAdminLog(
+    interaction.client,
+    '⚠️ LFG Backend Mirror Failed',
+    `Couldn't mirror **${actionLabel}** for <@${interaction.user.id}> on group **${group.roleLabel}** (thread <#${group.threadId}>) to the shared LFG backend: ${err.message}`
+  );
 }
 
 // ---- Setup UI (accordion: Category -> Activity -> Size -> Start Time) ----
@@ -332,7 +339,6 @@ async function handleDescriptionModalSubmit(interaction) {
   };
   activeGroups.set(groupId, group);
 
-  const embed = buildGroupEmbed(group);
   const row = buildGroupRow(groupId);
 
   // Auto-applies a matching forum tag if one exists with the activity's base name (e.g. "Yama", not the "LFG-" prefixed role) — entirely optional, skipped if none matches.
@@ -346,8 +352,7 @@ async function handleDescriptionModalSubmit(interaction) {
       name: buildThreadName(group, 'Open'),
       appliedTags: matchingTag ? [matchingTag.id] : [],
       message: {
-        content: buildMainPostContent(group),
-        embeds: [embed],
+        content: buildGroupText(group),
         components: [row],
       },
     });
@@ -410,26 +415,15 @@ async function handleDescriptionModalSubmit(interaction) {
   scheduleReplyCleanup(interaction, POST_CREATED_MESSAGE_LIFETIME_MS, '/lfg-post confirmation message');
 }
 
-// Member/queue counts live in the main post's content line instead (see buildMainPostContent),
-// not the title — the creator isn't included either (it's in the embed footer), to keep the
-// title short since Discord thread names cap at 100 characters.
+// Member/queue counts live in the main post's body text instead, not the title — the creator
+// isn't included either (it's in the body's footer line), to keep the title short since Discord
+// thread names cap at 100 characters.
 function buildThreadName(group, statusWord) {
   const countdown = describeStartCountdown(group.timeEpoch);
   // "Start: Started" reads oddly once it's actually begun — drop the "Start:" label at that point.
   const startLabel = countdown === 'Started' ? countdown : `Start: ${countdown}`;
   const name = `[${statusWord}] - ${group.roleLabel} - ${startLabel}`;
   return truncate(name, 100);
-}
-
-// The main post's plain content — the role ping, plus a live Players/Queue line so the counts are
-// visible without opening the embed. Edited on every membership change (see updateMainPost /
-// updateGroupMessage), unlike the title, which only changes on a status/label change.
-function buildMainPostContent(group) {
-  const pingLine = [emojiMarkup(group.emoji), `<@&${group.roleId}>`].filter(Boolean).join(' ');
-  const lines = [pingLine, `Players: ${group.members.size}/${formatCapacity(group)}`];
-  if (group.queue.length) lines.push(`Queue: ${group.queue.length} Waiting`);
-  if (group.description) lines.push(`Description: ${group.description}`);
-  return lines.join('\n');
 }
 
 function statusWordFor(group) {
@@ -445,14 +439,16 @@ async function renameThreadChannel(channel, group) {
   }
 }
 
-// Re-renders the main post (embed + button row) by editing its starter message directly. Used by
-// flows with no interaction of their own to call .update() on — e.g. the queue-offer buttons live on
-// their own activity message (see sendOrEditActivity), and the timeout-triggered skip has none at all.
+// Re-renders the main post (body text + button row) by editing its starter message directly. Used
+// by flows with no interaction of their own to call .update() on — e.g. the queue-offer buttons live
+// on their own activity message (see sendOrEditActivity), and the timeout-triggered skip has none at all.
 async function updateMainPost(channel, group, components = [buildGroupRow(group.id)]) {
   try {
     // A forum thread's starter message shares the thread's own id, so this edits it directly
     // by id (one PATCH) instead of fetchStarterMessage() + edit() (a GET followed by a PATCH).
-    await channel.messages.edit(channel.id, { content: buildMainPostContent(group), embeds: [buildGroupEmbed(group)], components });
+    // embeds: [] is explicit, not just omitted — a post edited before the embed-to-text switch
+    // still has its old embed attached, and omitting the field here would leave it dangling.
+    await channel.messages.edit(channel.id, { content: buildGroupText(group), embeds: [], components });
   } catch (err) {
     if (!isAlreadyGoneError(err)) {
       console.error(`[LFG] Could not update post ${group.id}:`, err.message);
@@ -492,10 +488,13 @@ function stopCountdownRefresh(group) {
 }
 
 function mentionAll(group) {
-  return [...group.members].map((id) => `<@${id}>`).join(' ');
+  return [...group.members].map((id) => `<@${id}>`).join('\n');
 }
 
-// Every activity notice pings the whole group before its message — this is the shared prefix.
+// Pings the whole group before a message — reserved for notices where everyone genuinely needs
+// pinging (a formed group, a time-sensitive keep-alive/disband/start-now). Routine membership
+// churn (someone joining, leaving, or taking a freed spot) doesn't get this — see the individual
+// handlers below, which pass their notice text straight to sendOrEditActivity instead.
 function memberNotice(group, text) {
   return `${mentionAll(group)}\n${text}`;
 }
@@ -504,7 +503,7 @@ function memberNotice(group, text) {
 // since Discord only pings on a genuinely new message, not one edited to add a mention later.
 // Whatever notice was showing before gets deleted first, so only the newest one is ever visible —
 // no delay needed. components defaults to none, which also clears a resolved queue offer's buttons.
-async function sendOrEditActivity(channel, group, text, components = [], { color = null } = {}) {
+async function sendOrEditActivity(channel, group, text, components = []) {
   if (group.activityMessageId) {
     const previousMessageId = group.activityMessageId;
     group.activityMessageId = null;
@@ -513,8 +512,7 @@ async function sendOrEditActivity(channel, group, text, components = [], { color
     });
   }
 
-  const embed = new EmbedBuilder().setDescription(text).setColor(color ?? resolveGroupColor(group)).setTimestamp();
-  const message = await channel.send({ embeds: [embed], components });
+  const message = await channel.send({ content: text, components });
   group.activityMessageId = message.id;
 }
 
@@ -556,11 +554,9 @@ function cleanupStaleGroup(group) {
   tearDownGroup(group);
 }
 
-// Decides what happens to a spot that just freed up (someone left, declined, or timed out): if
-// anyone's queued, hold it for whoever's waited longest and start their offer clock
-// (QUEUE_OFFER_TIMEOUT_MS); otherwise reopen the group to the public Join button. precedingText,
-// if given, is prepended so e.g. "X left the group" and "the spot is now offered to Y" land as
-// one notice instead of two (sendOrEditActivity clears whatever notice was showing before).
+// Decides what happens to a freed spot: if anyone's queued, hold it for whoever's waited longest
+// and start their offer clock (QUEUE_OFFER_TIMEOUT_MS); otherwise reopen to the public Join button.
+// precedingText, if given, folds into the same notice (e.g. "X left" + "offered to Y" as one message).
 async function advanceQueueOrReopen(client, channel, group, precedingText = '') {
   clearPendingOffer(group);
 
@@ -579,8 +575,8 @@ async function advanceQueueOrReopen(client, channel, group, precedingText = '') 
 
   const nextUserId = group.queue[0];
   group.pendingOfferUserId = nextUserId;
-  // <t:...:R> is a live, auto-localizing Discord timestamp (same trick as the embed's Start
-  // field) — it counts down on its own client-side instead of needing a re-edit every second.
+  // <t:...:R> is a live, auto-localizing Discord timestamp (same trick as the main post's Start
+  // line) — it counts down client-side instead of needing a re-edit every second.
   const offerExpiresEpoch = Math.floor((Date.now() + QUEUE_OFFER_TIMEOUT_MS) / 1000);
   const text = [
     precedingText,
@@ -617,13 +613,13 @@ async function handleQueueOfferTimeout(client, group) {
   }
 }
 
-// Updates the group's post with a fresh embed, cleaning up and replying if the post is already gone.
+// Updates the group's post with fresh body text, cleaning up and replying if the post is already gone.
 // components defaults to the normal Join/Leave/Start Now/Disband row — pass [] once nothing on the post
 // should be actionable anymore (e.g. once disbanding starts). Returns false (the caller should stop)
-// if the update failed because the post no longer exists.
+// if the update failed because the post no longer exists. embeds: [] is explicit — see updateMainPost.
 async function updateGroupMessage(interaction, group, components = [buildGroupRow(group.id)]) {
   try {
-    await interaction.update({ content: buildMainPostContent(group), embeds: [buildGroupEmbed(group)], components });
+    await interaction.update({ content: buildGroupText(group), embeds: [], components });
     return true;
   } catch (err) {
     if (!isAlreadyGoneError(err)) throw err;
@@ -688,7 +684,7 @@ async function handleJoinButton(interaction, groupId) {
         action: 'join',
       });
     } catch (err) {
-      console.error(`[LFG] Could not mirror join for group ${groupId}:`, err.message);
+      await notifyBackendMirrorFailure(interaction, group, 'join', err);
     }
   }
 
@@ -711,10 +707,11 @@ async function handleJoinButton(interaction, groupId) {
       sendOrEditActivity(interaction.channel, group, memberNotice(group, '🎉 **Group formed, Good luck!**')),
     ]);
   } else {
-    // No rename — still under capacity, so the status word doesn't change.
+    // No rename — still under capacity, so the status word doesn't change. No group-wide ping
+    // either — routine membership churn, not the "you're locked in" moment group-formed is.
     await Promise.all([
       followUpEphemeral(interaction, '✅ You joined the group!', { autoDelete: true }),
-      sendOrEditActivity(interaction.channel, group, memberNotice(group, `🔔 <@${interaction.user.id}> joined the group!`)),
+      sendOrEditActivity(interaction.channel, group, `🔔 <@${interaction.user.id}> joined the group!`),
     ]);
   }
 }
@@ -741,7 +738,8 @@ async function handleLeaveButton(interaction, groupId) {
   if (!(await updateGroupMessage(interaction, group))) return;
   await followUpEphemeral(interaction, 'You left the group.', { autoDelete: true });
 
-  const leftText = memberNotice(group, `⚠️ <@${interaction.user.id}> left the group.`);
+  // No group-wide ping — routine membership churn, same as a join.
+  const leftText = `⚠️ <@${interaction.user.id}> left the group.`;
   if (group.backendGroupId && isLfgBackendConfigured()) {
     try {
       await actOnBackendGroup({
@@ -750,7 +748,7 @@ async function handleLeaveButton(interaction, groupId) {
         action: 'leave',
       });
     } catch (err) {
-      console.error(`[LFG] Could not mirror leave for group ${groupId}:`, err.message);
+      await notifyBackendMirrorFailure(interaction, group, 'leave', err);
     }
   }
 
@@ -772,9 +770,7 @@ async function handleLeaveButton(interaction, groupId) {
     await sendOrEditActivity(
       interaction.channel,
       group,
-      `${leftText}\n\n💤 **This group is now empty.** It will automatically close <t:${closesAtEpoch}:R> unless someone rejoins.`,
-      undefined,
-      { color: Colors.Red }
+      `${leftText}\n\n💤 **This group is now empty.** It will automatically close <t:${closesAtEpoch}:R> unless someone rejoins.`
     );
     schedulePostGroupCleanup(interaction.client, group, EMPTY_GROUP_CLEANUP_DELAY_MS);
   }
@@ -808,7 +804,8 @@ async function handleQueueAcceptButton(interaction, groupId) {
   group.status = isGroupFull(group) ? 'closed' : 'open';
   await syncBackendQueueCount(group);
 
-  const acceptedText = memberNotice(group, `✅ <@${interaction.user.id}> accepted the open spot and joined!`);
+  // No group-wide ping — filling a freed spot is routine membership churn, same as a join.
+  const acceptedText = `✅ <@${interaction.user.id}> accepted the open spot and joined!`;
   if (group.backendGroupId && isLfgBackendConfigured()) {
     try {
       await actOnBackendGroup({
@@ -817,7 +814,7 @@ async function handleQueueAcceptButton(interaction, groupId) {
         action: 'join',
       });
     } catch (err) {
-      console.error(`[LFG] Could not mirror queue accept for group ${groupId}:`, err.message);
+      await notifyBackendMirrorFailure(interaction, group, 'queue accept', err);
     }
   }
   // Someone just joined — proof the group's still active, so reset the keep-alive clock.
@@ -884,7 +881,7 @@ async function handleStartNowButton(interaction, groupId) {
 async function beginDisband(client, channel, group, announcementText) {
   group.status = 'disbanded';
   // Also drops pendingOfferUserId, not just its timer — otherwise a later Cancel Disband would
-  // reopen the group with the embed still marking a stale offer as "pending" for no one in particular.
+  // reopen the group still marking a stale offer as "pending" for no one in particular.
   clearPendingOffer(group);
   stopCountdownRefresh(group);
   stopKeepAliveCheck(group);
@@ -894,8 +891,7 @@ async function beginDisband(client, channel, group, announcementText) {
     channel,
     group,
     memberNotice(group, `${announcementText} It will close <t:${closesAtEpoch}:R>.`),
-    [buildCancelDisbandRow(group.id)],
-    { color: Colors.Red }
+    [buildCancelDisbandRow(group.id)]
   );
 
   // Reuses the normal expiry timer (see schedulePostGroupCleanup) rather than a bespoke one — it
@@ -929,7 +925,7 @@ async function handleDisbandButton(interaction, groupId) {
         action: 'close',
       });
     } catch (err) {
-      console.error(`[LFG] Could not mirror close for group ${groupId}:`, err.message);
+      await notifyBackendMirrorFailure(interaction, group, 'close', err);
     }
   }
   await beginDisband(interaction.client, interaction.channel, group, `🛑 <@${interaction.user.id}> has selected to disband this group.`);
@@ -1010,9 +1006,8 @@ function refreshCleanupSchedule(client, group) {
   }
 }
 
-// Self-reschedules every KEEP_ALIVE_INTERVAL_MS for as long as a group stays open — same shape as
-// scheduleCountdownRefresh. Restarted (not left running) on any sign of life, so the next check is
-// always a full interval later. delayMs defaults to that interval — runKeepAliveCheck passes the
+// Self-reschedules every KEEP_ALIVE_INTERVAL_MS while the group stays open, restarted (not left
+// running) on any sign of life. delayMs defaults to that interval; runKeepAliveCheck passes the
 // shorter KEEP_ALIVE_RETRY_DELAY_MS instead when a check got skipped for a live queue offer.
 function scheduleKeepAliveCheck(client, group, delayMs = KEEP_ALIVE_INTERVAL_MS) {
   if (group.keepAliveTimeoutId) clearTimeout(group.keepAliveTimeoutId);
@@ -1100,11 +1095,11 @@ async function handleKeepAliveButton(interaction, groupId) {
   // Edits the prompt message directly (the button the user just clicked lives on it) instead of
   // going through sendOrEditActivity — confirming isn't news anyone needs pinged for, so this
   // doesn't need to be a new message, just this one losing its button.
-  const embed = new EmbedBuilder()
-    .setDescription(memberNotice(group, `✅ <@${interaction.user.id}> confirmed this group is still active.`))
-    .setColor(resolveGroupColor(group))
-    .setTimestamp();
-  await interaction.update({ embeds: [embed], components: [] });
+  await interaction.update({
+    content: memberNotice(group, `✅ <@${interaction.user.id}> confirmed this group is still active.`),
+    embeds: [],
+    components: [],
+  });
 }
 
 // ---- Entry points called from eventHandler.js ----

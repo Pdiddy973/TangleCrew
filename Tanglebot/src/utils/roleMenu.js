@@ -187,7 +187,7 @@ const CATEGORIES = {
       { label: 'CoX', emoji: '1534395684277715005', color: '#17A398', sizeOptions: sizeRangeWithMass(7) },
       { label: 'CoXCM', emoji: '1535326415073976350', color: '#17A398', sizeOptions: sizeRange(7) },
       { label: 'ToB', emoji: '1534395699213631569', color: '#7A0C0C', sizeOptions: sizeRange(5) },
-      { label: 'HMToB', emoji: '1535325447045255168', color: '#7A0C0C', sizeOptions: sizeRange(5) },
+      { label: 'ToBHM', emoji: '1535325447045255168', color: '#7A0C0C', sizeOptions: sizeRange(5) },
       { label: 'ToA', emoji: '1535325450300301463', color: '#D2A679', sizeOptions: sizeRange(8) },
       { label: 'ToAExpert', emoji: '1535325449003991141', color: '#D2A679', sizeOptions: sizeRange(8) },
     ],
@@ -208,8 +208,12 @@ const CATEGORIES = {
 };
 
 // Derives each role's `value` and each category's `activityNoun` now, so the rest of the codebase can just read them.
+// Roles are sorted alphabetically by label here too, so every consumer that iterates
+// category.roles (role-menu buttons, the /lfg-post activity picker, the LFG start page list,
+// the exported catalog, ...) lists activities in alphabetical order without having to sort itself.
 for (const category of Object.values(CATEGORIES)) {
   category.activityNoun = category.label.toLowerCase();
+  category.roles.sort((a, b) => a.label.localeCompare(b.label));
   for (const role of category.roles) {
     role.value = slugify(role.label);
   }
@@ -417,8 +421,25 @@ function findRole(guild, name) {
   return guild.roles.cache.find((r) => r.name === lfgRoleName(name));
 }
 
+// Role icons (the little emoji shown next to a role's name) require the ROLE_ICONS guild feature,
+// which is only granted at Boost Level 2+. Checking the feature flag directly (rather than
+// guild.premiumTier >= 2) covers servers that have it via other means (e.g. partnered).
+function guildSupportsRoleIcons(guild) {
+  return guild.features.includes('ROLE_ICONS');
+}
+
+// Builds the {icon, unicodeEmoji} fields for a role create/edit call. Custom emoji (snowflake IDs)
+// go through `icon` — discord.js resolves the ID against its emoji cache and uploads the image.
+// Plain unicode emoji go through `unicodeEmoji`. Omitted entirely if the guild can't support icons,
+// so the call succeeds with no icon rather than erroring on an unsupported field.
+function roleIconOptions(guild, emoji) {
+  if (!guildSupportsRoleIcons(guild) || !isValidEmoji(emoji)) return {};
+  return isSnowflakeEmoji(emoji) ? { icon: emoji } : { unicodeEmoji: emoji };
+}
+
 // Finds the role, creating it first if it's missing.
 async function ensureRoleExists(guild, name) {
+  const roleConfig = findRoleConfig(name);
   const existing = findRole(guild, name);
   if (existing) return existing;
 
@@ -426,6 +447,8 @@ async function ensureRoleExists(guild, name) {
     const role = await guild.roles.create({
       name: lfgRoleName(name),
       mentionable: true,
+      ...(isValidColor(roleConfig?.color) ? { color: roleConfig.color } : {}),
+      ...roleIconOptions(guild, roleConfig?.emoji),
       reason: 'Auto-created for the LFG system (roleMenu.js CATEGORIES)',
     });
     console.log(`[LFG] Created missing role: "${role.name}"`);
@@ -434,6 +457,57 @@ async function ensureRoleExists(guild, name) {
     console.error(`[LFG] Could not auto-create role "${lfgRoleName(name)}":`, err.message);
     return null;
   }
+}
+
+// Looks up a role's CATEGORIES entry by its base label (e.g. "Yama"), across all categories.
+function findRoleConfig(name) {
+  for (const category of Object.values(CATEGORIES)) {
+    const match = category.roles.find((r) => r.label === name);
+    if (match) return match;
+  }
+  return null;
+}
+
+// Backfills color + icon onto every already-created LFG- role so pre-existing roles pick up
+// changes made to CATEGORIES after they were first created (ensureRoleExists only runs the
+// create path once, on first use). Safe to call repeatedly — a role already matching is skipped.
+// Returns a summary so callers (e.g. an admin command) can report what happened.
+async function syncRoleAppearance(guild) {
+  const supportsIcons = guildSupportsRoleIcons(guild);
+  const results = { updated: [], skipped: [], failed: [] };
+
+  for (const category of Object.values(CATEGORIES)) {
+    for (const roleConfig of category.roles) {
+      const role = findRole(guild, roleConfig.label);
+      if (!role) {
+        results.skipped.push(roleConfig.label);
+        continue;
+      }
+
+      const edits = {};
+      if (isValidColor(roleConfig.color) && role.hexColor.toLowerCase() !== roleConfig.color.toLowerCase()) {
+        edits.color = roleConfig.color;
+      }
+      if (supportsIcons && isValidEmoji(roleConfig.emoji)) {
+        Object.assign(edits, roleIconOptions(guild, roleConfig.emoji));
+      }
+
+      if (Object.keys(edits).length === 0) {
+        results.skipped.push(roleConfig.label);
+        continue;
+      }
+
+      try {
+        await role.edit({ ...edits, reason: 'LFG role appearance sync (roleMenu.js CATEGORIES)' });
+        results.updated.push(roleConfig.label);
+      } catch (err) {
+        console.error(`[LFG] Could not sync appearance for role "${role.name}":`, err.message);
+        results.failed.push(roleConfig.label);
+      }
+    }
+  }
+
+  return results;
 }
 
 // A real Discord snowflake ID is a string of digits (typically 17-20 long).
@@ -495,6 +569,7 @@ module.exports = {
   buildClearAllRow,
   handleRoleMenuButtonInteraction,
   ensureRoleExists,
+  syncRoleAppearance,
   lfgRoleName,
   notifyAdminLog,
   notifyAdminLogAndReply,
