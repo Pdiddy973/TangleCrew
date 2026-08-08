@@ -276,7 +276,6 @@ module.exports = {
   buildQueueOfferRow,
   buildCancelDisbandRow,
   buildKeepAliveRow,
-  formatCapacity,
   makeGroupId,
   isGroupFull,
 };

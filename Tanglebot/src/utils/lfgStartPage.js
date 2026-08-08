@@ -2,7 +2,6 @@ const { ChannelType, ChannelFlags, EmbedBuilder } = require('discord.js');
 const { readJson, writeJson, truncate } = require('./db');
 const { CATEGORIES, emojiLabel, isAlreadyGoneError, notifyAdminLog } = require('./roleMenu');
 const { DEFAULT_EMBED_COLOR } = require('./embedColor');
-const { WIDTH_PAD } = require('./embedWidth');
 
 // Same forum /lfg-post creates group threads in — the start page lives there too.
 const FORUM_CHANNEL_ID = process.env.LFG_FORUM_CHANNEL_ID;
@@ -41,8 +40,7 @@ function buildInstructionsEmbed() {
         '_See the gif below for how joining, leaving, and the queue work on a group post._',
       ].join('\n')
     )
-    .setColor(EMBED_COLOR)
-    .setFooter({ text: WIDTH_PAD });
+    .setColor(EMBED_COLOR);
 }
 
 // Covers the automatic/behind-the-scenes behavior that isn't a button someone clicks — worth
@@ -61,8 +59,7 @@ function buildAutomationEmbed() {
         '• **The post tidies itself up** — old notices get replaced automatically.',
       ].join('\n')
     )
-    .setColor(EMBED_COLOR)
-    .setFooter({ text: WIDTH_PAD });
+    .setColor(EMBED_COLOR);
 }
 
 // Reads categories/activities live from CATEGORIES — a new one shows up on the next restart.
@@ -86,8 +83,7 @@ function buildActivitiesEmbed() {
     .setTitle('🗂️ Loaded Activities')
     .setDescription('Everything currently available to queue up for:')
     .addFields(activityFields)
-    .setColor(EMBED_COLOR)
-    .setFooter({ text: WIDTH_PAD });
+    .setColor(EMBED_COLOR);
 }
 
 function buildStartPageEmbeds() {

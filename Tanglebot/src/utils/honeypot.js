@@ -376,8 +376,6 @@ async function handleHoneypotButtonInteraction(interaction) {
 }
 
 module.exports = {
-  CUSTOM_ID_PREFIX,
-  deleteAllUserMessages,
   handleHoneypotButtonInteraction,
   handleHoneypotMessage,
   hasHoneypotAdminAccess,
