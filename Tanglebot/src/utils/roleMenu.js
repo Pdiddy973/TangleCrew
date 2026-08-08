@@ -429,12 +429,16 @@ function guildSupportsRoleIcons(guild) {
 }
 
 // Builds the {icon, unicodeEmoji} fields for a role create/edit call. Custom emoji (snowflake IDs)
-// go through `icon` — discord.js resolves the ID against its emoji cache and uploads the image.
+// go through `icon` as a CDN image URL — discord.js's `icon` option only accepts a Buffer, data URI,
+// http(s) URL, or local file path, so the bare snowflake ID must be turned into a URL first (passing
+// it directly makes discord.js treat it as a relative file path and fail with ENOENT).
 // Plain unicode emoji go through `unicodeEmoji`. Omitted entirely if the guild can't support icons,
 // so the call succeeds with no icon rather than erroring on an unsupported field.
 function roleIconOptions(guild, emoji) {
   if (!guildSupportsRoleIcons(guild) || !isValidEmoji(emoji)) return {};
-  return isSnowflakeEmoji(emoji) ? { icon: emoji } : { unicodeEmoji: emoji };
+  if (!isSnowflakeEmoji(emoji)) return { unicodeEmoji: emoji };
+  const ext = guild.emojis.cache.get(emoji)?.animated ? 'gif' : 'png';
+  return { icon: `https://cdn.discordapp.com/emojis/${emoji}.${ext}?size=64` };
 }
 
 // Finds the role, creating it first if it's missing.
