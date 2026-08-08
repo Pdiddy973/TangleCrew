@@ -198,6 +198,36 @@ Restricted to users with the **Templar** role. Only loaded if `PET_HIGHSCORES_SH
 
 ---
 
+### 🔄 `/refreshboards` — Refresh Leaderboards
+
+Reposts every leaderboard (currently `/pethighscore` and `/donationhighscore`) straight from their Google Sheets, without needing a throwaway `add`/`remove` or a bot restart.
+
+**When to use it:**
+- After bulk-editing a leaderboard's sheet by hand (imports, corrections) and wanting the Discord post to catch up immediately
+
+Restricted to users with the **Templar** role. Only loaded if `GOOGLE_SERVICE_ACCOUNT_JSON` is set.
+
+<details>
+<summary><strong>Environment variables</strong></summary>
+
+| Variable | Required | Description |
+|---|---|---|
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | Yes | The command isn't loaded at all without this — see [Google service account](#google-service-account). |
+| `TEMPLAR_ROLE_ID` | Recommended | Restricts the command to Templars. **This check fails open** — if left unset, it's usable by anyone. |
+
+</details>
+
+<details>
+<summary><strong>How it works</strong></summary>
+
+1. Calls each leaderboard's own startup-refresh routine (the same one that runs when the bot boots), one per board.
+2. Each board reads its sheet fresh and reposts, or edits its existing leaderboard message(s) in place — the same message-recovery behavior described under `/pethighscore` and `/donationhighscore`.
+3. A board whose own env vars (e.g. `PET_HIGHSCORES_SHEET_ID`) aren't set is silently skipped rather than failing the whole command, so the other board still refreshes.
+
+</details>
+
+---
+
 ### 🔔 `/lfg-roles` — Event Notification Roles
 
 Lets members self-assign notification roles for specific bosses, raids, and skilling/minigame activities, so they only get pinged for exactly what they're interested in.
