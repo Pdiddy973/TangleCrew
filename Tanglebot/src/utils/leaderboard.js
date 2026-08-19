@@ -6,11 +6,29 @@ const { readJson, writeJson } = require('./db');
 const MAX_EMBEDS_PER_MESSAGE = 10;
 const MAX_MESSAGE_TOTAL_CHARS = 5800;
 
-// A mention only renders as a clickable chip if the viewer's client has the user cached, which
-// for a member who's left the guild it won't — falls back to their last known display name so
-// the leaderboard doesn't show raw "<@id>" text for former members.
-function mentionOrName(entry, memberIds) {
-  return memberIds.has(entry.discordId) ? `<@${entry.discordId}>` : `**${entry.displayName}**`;
+function mentionOrName(entry) {
+  return `**${entry.displayName}**`;
+}
+
+// Refreshes each entry's display name from the guild so nickname changes show up without a
+// throwaway add/remove. Departed members keep their last stored name. onNameChange, if given, is
+// awaited per changed entry so the caller can persist it back to its sheet row.
+async function refreshDisplayNames(guild, entries, onNameChange) {
+  const fetchedMembers = await guild.members.fetch().catch(() => null);
+  if (!fetchedMembers) return entries;
+
+  const fresh = [];
+  for (const entry of entries) {
+    const member = fetchedMembers.get(entry.discordId);
+    if (member && member.displayName !== entry.displayName) {
+      const updated = { ...entry, displayName: member.displayName };
+      if (onNameChange && entry.rowNumber != null) await onNameChange(updated);
+      fresh.push(updated);
+    } else {
+      fresh.push(entry);
+    }
+  }
+  return fresh;
 }
 
 function embedCharCount(embed) {
@@ -58,22 +76,15 @@ async function findPreviousLeaderboardMessages(channel, botUserId, isOwnLeaderbo
 // post; no per-member state to patch.
 //
 // options:
-//   buildEmbeds(entries, memberIds) -> Embed[]   builds this leaderboard's embeds
+//   buildEmbeds(entries) -> Embed[]              builds this leaderboard's embeds
 //   dataFile                                     data/ JSON file storing the last-posted message IDs
 //   logPrefix                                    tag for console logs, e.g. "PHS" / "DHS"
 //   isOwnLeaderboardMessage(firstEmbed) -> bool   identifies this leaderboard's own post during recovery
-async function postLeaderboard(guild, channelId, entries, botUserId, { buildEmbeds, dataFile, logPrefix, isOwnLeaderboardMessage }) {
+//   onDisplayNameChange(entry) -> Promise         (optional) persists a refreshed display name back to the sheet
+async function postLeaderboard(guild, channelId, entries, botUserId, { buildEmbeds, dataFile, logPrefix, isOwnLeaderboardMessage, onDisplayNameChange }) {
   const channel = await guild.channels.fetch(channelId);
-  // Warmed once per post so mentionOrName can tell current members from
-  // former ones without a fetch per leaderboard entry. Built from the
-  // fetch's own return value (not guild.members.cache) because the cache can
-  // retain stale entries for members who left while the bot was offline —
-  // fetch() doesn't prune those, so cache.keys() would still treat them as
-  // current and render an unresolvable <@id> mention instead of falling
-  // back to their stored display name.
-  const fetchedMembers = await guild.members.fetch().catch(() => null);
-  const memberIds = new Set((fetchedMembers ?? guild.members.cache).keys());
-  const groups = packEmbedsIntoMessages(buildEmbeds(entries, memberIds));
+  const freshEntries = await refreshDisplayNames(guild, entries, onDisplayNameChange);
+  const groups = packEmbedsIntoMessages(buildEmbeds(freshEntries));
 
   const stored = readJson(dataFile);
   const prevIds = Array.isArray(stored.messageIds) ? stored.messageIds : [];

@@ -123,7 +123,7 @@ function buildHeaderEmbed() {
 }
 
 // The "# " markdown heading renders emoji noticeably larger than plain text.
-function buildEmbeds(entries, memberIds) {
+function buildEmbeds(entries) {
   const header = buildHeaderEmbed();
 
   if (entries.length === 0) {
@@ -141,7 +141,7 @@ function buildEmbeds(entries, memberIds) {
     const emojiLine = entry.petKeys.map(k => petEmoji(PET_BY_KEY.get(k))).join(' ');
     const petWord = entry.count === 1 ? 'pet' : 'pets';
     const medal = RANK_MEDALS[i] ? `${RANK_MEDALS[i]} ` : '';
-    return `${medal}${mentionOrName(entry, memberIds)} | **${entry.count}** ${petWord}\n# ${emojiLine}`;
+    return `${medal}${mentionOrName(entry)} | **${entry.count}** ${petWord}\n# ${emojiLine}`;
   });
 
   const descriptions = [];
@@ -181,6 +181,18 @@ async function postLeaderboard(guild, channelId, entries, botUserId) {
     dataFile: 'pethighscores_message.json',
     logPrefix: 'PHS',
     isOwnLeaderboardMessage,
+    onDisplayNameChange: async (entry) => {
+      try {
+        await updateRow(
+          process.env.PET_HIGHSCORES_SHEET_ID,
+          `${SHEET_TAB}!A${entry.rowNumber}:C${entry.rowNumber}`,
+          [entry.discordId, entry.displayName, entry.petKeys.join(', ')]
+        );
+        console.log(`[PHS] Refreshed stored display name for ${entry.discordId} -> "${entry.displayName}"`);
+      } catch (err) {
+        console.error(`[PHS] Failed to persist refreshed display name for ${entry.discordId}:`, err);
+      }
+    },
   });
 }
 

@@ -111,7 +111,7 @@ function totalDonatedHeading(totalDonated) {
   return `${COINS_EMOJI} Total Donated: ${formatGP(totalDonated)} ${COINS_EMOJI}`;
 }
 
-function buildEmbeds(entries, memberIds) {
+function buildEmbeds(entries) {
   const header = buildHeaderEmbed();
 
   if (entries.length === 0) {
@@ -131,7 +131,7 @@ function buildEmbeds(entries, memberIds) {
   // (still bigger than plain text, without every mention looking oversized).
   const blocks = entries.map((entry, i) => {
     const badge = donorBadge(entry);
-    const namePart = mentionOrName(entry, memberIds);
+    const namePart = mentionOrName(entry);
     const line = badge
       ? `${badge} ${namePart} | **${formatGP(entry.donated)}**`
       : `${namePart} | **${formatGP(entry.donated)}**`;
@@ -174,6 +174,18 @@ async function postLeaderboard(guild, channelId, entries, botUserId) {
     dataFile: 'donationhighscores_message.json',
     logPrefix: 'DHS',
     isOwnLeaderboardMessage,
+    onDisplayNameChange: async (entry) => {
+      try {
+        await updateRow(
+          process.env.DONATIONS_SHEET_ID,
+          `${SHEET_TAB}!A${entry.rowNumber}:C${entry.rowNumber}`,
+          [entry.discordId, entry.displayName, entry.donated]
+        );
+        console.log(`[DHS] Refreshed stored display name for ${entry.discordId} -> "${entry.displayName}"`);
+      } catch (err) {
+        console.error(`[DHS] Failed to persist refreshed display name for ${entry.discordId}:`, err);
+      }
+    },
   });
 }
 
