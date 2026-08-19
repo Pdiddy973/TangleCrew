@@ -231,7 +231,7 @@ function buildDiscordLfgCatalog() {
       return {
         key: role.value,
         displayName: role.label,
-        discordRoleName: role.label,
+        discordRoleName: lfgRoleName(role.label),
         description: null,
         enabled: true,
         displayOrder: (roleIndex + 1) * 10,
