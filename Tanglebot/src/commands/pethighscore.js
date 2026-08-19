@@ -2,6 +2,7 @@ const { SlashCommandBuilder, MessageFlags, EmbedBuilder } = require('discord.js'
 const { getRows, updateRow, appendRow } = require('../utils/googleSheets');
 const { DEFAULT_EMBED_COLOR } = require('../utils/embedColor');
 const { mentionOrName, postLeaderboard: postLeaderboardShared } = require('../utils/leaderboard');
+const { notifyAdminLog } = require('../utils/roleMenu');
 
 const TEMPLAR_ROLE_ID = process.env.TEMPLAR_ROLE_ID;
 const OWNER_ROLE_ID = process.env.OWNER_ROLE_ID;
@@ -419,8 +420,22 @@ module.exports = {
 
       if (subcommand === 'add') {
         console.log(`[PHS] ${interaction.user.tag} added "${pet.name}" to ${targetUser.tag} (now ${newKeys.length} pets)`);
+        notifyAdminLog(
+          interaction.client,
+          '🐾 Pet Added',
+          `${interaction.user} has added **${pet.name}** to ${targetUser}'s pet collection. They now have **${newKeys.length}** pet${newKeys.length === 1 ? '' : 's'}.`,
+          [],
+          EMBED_COLOR
+        );
       } else {
         console.log(`[PHS] ${interaction.user.tag} removed "${pet.name}" from ${targetUser.tag} (now ${newKeys.length} pets)`);
+        notifyAdminLog(
+          interaction.client,
+          '🐾 Pet Removed',
+          `${interaction.user} has removed **${pet.name}** from ${targetUser}'s pet collection. They now have **${newKeys.length}** pet${newKeys.length === 1 ? '' : 's'}.`,
+          [],
+          EMBED_COLOR
+        );
       }
 
       const roleChange = await syncMasterRole(guild, targetUser.id, newKeys.length);

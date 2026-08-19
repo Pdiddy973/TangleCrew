@@ -2,6 +2,7 @@ const { SlashCommandBuilder, MessageFlags, EmbedBuilder } = require('discord.js'
 const { getRows, updateRow, appendRow } = require('../utils/googleSheets');
 const { DEFAULT_EMBED_COLOR } = require('../utils/embedColor');
 const { mentionOrName, postLeaderboard: postLeaderboardShared } = require('../utils/leaderboard');
+const { notifyAdminLog } = require('../utils/roleMenu');
 
 const TEMPLAR_ROLE_ID = process.env.TEMPLAR_ROLE_ID;
 
@@ -346,9 +347,23 @@ module.exports = {
 
       if (subcommand === 'add') {
         console.log(`[DHS] ${interaction.user.tag} added ${formatGP(amount)} to ${targetUser.tag} (now ${formatGP(newAmount)})`);
+        notifyAdminLog(
+          interaction.client,
+          '💰 Donation Added',
+          `${interaction.user} has added **${formatGP(amount)}** GP donation to ${targetUser}. New total: **${formatGP(newAmount)}** GP.`,
+          [],
+          EMBED_COLOR
+        );
       } else {
         console.log(`[DHS] ${interaction.user.tag} removed ${formatGP(amount)} from ${targetUser.tag} (now ${formatGP(newAmount)})`);
         if (clamped) console.warn(`[DHS] ${targetUser.tag}'s total would have gone negative — clamped to 0`);
+        notifyAdminLog(
+          interaction.client,
+          '💰 Donation Removed',
+          `${interaction.user} has removed **${formatGP(amount)}** GP donation from ${targetUser}. New total: **${formatGP(newAmount)}** GP.`,
+          [],
+          EMBED_COLOR
+        );
       }
 
       const tierChange = await syncDonationRoles(guild, targetUser.id, currentAmount, newAmount);
