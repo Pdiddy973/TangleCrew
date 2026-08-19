@@ -65,9 +65,14 @@ async function findPreviousLeaderboardMessages(channel, botUserId, isOwnLeaderbo
 async function postLeaderboard(guild, channelId, entries, botUserId, { buildEmbeds, dataFile, logPrefix, isOwnLeaderboardMessage }) {
   const channel = await guild.channels.fetch(channelId);
   // Warmed once per post so mentionOrName can tell current members from
-  // former ones without a fetch per leaderboard entry.
-  await guild.members.fetch().catch(() => null);
-  const memberIds = new Set(guild.members.cache.keys());
+  // former ones without a fetch per leaderboard entry. Built from the
+  // fetch's own return value (not guild.members.cache) because the cache can
+  // retain stale entries for members who left while the bot was offline —
+  // fetch() doesn't prune those, so cache.keys() would still treat them as
+  // current and render an unresolvable <@id> mention instead of falling
+  // back to their stored display name.
+  const fetchedMembers = await guild.members.fetch().catch(() => null);
+  const memberIds = new Set((fetchedMembers ?? guild.members.cache).keys());
   const groups = packEmbedsIntoMessages(buildEmbeds(entries, memberIds));
 
   const stored = readJson(dataFile);
